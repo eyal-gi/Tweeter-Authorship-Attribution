@@ -19,10 +19,11 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
 import language_model
+
+
 # nltk.download('vader_lexicon')
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
-
 
 
 ########################################################################################################################
@@ -384,6 +385,7 @@ def normalize_features(df, column_name_list: list):
         df[col] = scaler.transform(df[[col]]).round(3)
     return df
 
+
 def make_categorized_from_hr_publish(df):
     """
     This function make a categories from the hr_publish_time to night-morning / noon / evening
@@ -392,18 +394,19 @@ def make_categorized_from_hr_publish(df):
     """
     temp_df = copy.deepcopy(df)
     for i in range(len(df)):
-        if temp_df.at[i,'hr_publish_time'] == 0 :
-            temp_df.at[i,'hr_publish_time'] = 24
-        if temp_df.at[i,'hr_publish_time'] == 1 :
-            temp_df.at[i,'hr_publish_time'] = 25
-        if temp_df.at[i,'hr_publish_time'] == 2 :
-            temp_df.at[i,'hr_publish_time'] = 26
+        if temp_df.at[i, 'hr_publish_time'] == 0:
+            temp_df.at[i, 'hr_publish_time'] = 24
+        if temp_df.at[i, 'hr_publish_time'] == 1:
+            temp_df.at[i, 'hr_publish_time'] = 25
+        if temp_df.at[i, 'hr_publish_time'] == 2:
+            temp_df.at[i, 'hr_publish_time'] = 26
 
-    df= temp_df
-    df['hr_publish_time'] = pd.cut(df['hr_publish_time'], bins=[3,10,16,26] , labels =['morning','noon','evening-night'])
-
+    df = temp_df
+    df['hr_publish_time'] = pd.cut(df['hr_publish_time'], bins=[3, 10, 16, 26],
+                                   labels=['morning', 'noon', 'evening-night'])
 
     return df
+
 
 def set_type_for_features(df):
     """
@@ -412,10 +415,9 @@ def set_type_for_features(df):
     :return: df with the correct type of features
 
     """
-    df=df.astype({'label':bool, 'quotes':bool, 'url':bool, 'written_time':bool, 'tag_realDonaldTrump':bool})
+    df = df.astype({'label': bool, 'quotes': bool, 'url': bool, 'written_time': bool, 'tag_realDonaldTrump': bool})
 
     return df
-
 
 
 def feature_correlation(df):
@@ -433,7 +435,6 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-
 def feature_selection(df):
     df = df.drop('id', axis=1)
 
@@ -442,15 +443,16 @@ def pre_process_main():
     train_data = read_data('trump_train.tsv')  # read the data
     train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction
     # feature_understanding(train_data_fe)
-    normalize_features(train_data_fe, ['hashtags_count' , 'tweet_length' , 'tags_count', 'lm_evaluation'])
+    normalize_features(train_data_fe, ['hashtags_count', 'tweet_length', 'tags_count', 'lm_evaluation'])
     train_data_fe = make_categorized_from_hr_publish(train_data_fe)
-    train_data_fe=set_type_for_features(train_data_fe)
-    train_data_fe = pd.get_dummies(train_data_fe, columns =['hr_publish_time'], drop_first=True)
+    train_data_fe = set_type_for_features(train_data_fe)
+    train_data_fe = pd.get_dummies(train_data_fe, columns=['hr_publish_time'], drop_first=True)
     # pd.set_option('display.max_columns' , None)
     # print(train_data_fe)
-    feature_correlation(train_data_fe) #make a heatmap correlation
+    feature_correlation(train_data_fe)  # make a heatmap correlation
     # pre_processing() (feature_selection) #chage name to make_final_data or something like that
     return train_data_fe
+
 
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
