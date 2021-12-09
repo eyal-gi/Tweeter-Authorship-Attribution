@@ -1,5 +1,4 @@
 import csv
-
 import nltk
 import numpy as np
 import pandas as pd
@@ -450,16 +449,25 @@ def pre_process_main():
     train_data = read_data('trump_train.tsv')  # read the data
     train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction
     # feature_understanding(train_data_fe)
-    normalize_features(train_data_fe, ['hashtags_count', 'tweet_length', 'tags_count', 'lm_evaluation'])
+    normalize_features(train_data_fe, ['hashtags_count' , 'tweet_length' , 'tags_count', 'lm_evaluation']) # normalized the features to be between [0,1].
     train_data_fe = make_categorized_from_hr_publish(train_data_fe)
-    train_data_fe = set_type_for_features(train_data_fe)
-    train_data_fe = pd.get_dummies(train_data_fe, columns=['hr_publish_time'], drop_first=True)
+    train_data_fe = pd.get_dummies(train_data_fe, columns =['hr_publish_time'], drop_first=True)
     # pd.set_option('display.max_columns' , None)
     # print(train_data_fe)
-    feature_correlation(train_data_fe)  # make a heatmap correlation
-    # pre_processing() (feature_selection) #chage name to make_final_data or something like that
-    return train_data_fe
 
+    ######################################## for correlation ##########################################################
+    train_data_fe=set_type_for_features(train_data_fe) # make the type boolean for the correlation heatmap
+    feature_correlation(train_data_fe) #make a heatmap correlation
+    ###################################################################################################################
+    # pre_processing() (feature_selection) #chage name to make_final_data or something like that
+
+    # make train and test from the train data
+    temp_df = copy.deepcopy(train_data_fe)
+    X_train = temp_df.drop('label', axis=1)
+    Y_train = temp_df['label']
+    x_train, x_test_check, y_train, y_test_check = train_test_split(X_train, Y_train, test_size=0.1,
+                                                                    random_state=42, stratify=Y_train)
+    pass
 
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
