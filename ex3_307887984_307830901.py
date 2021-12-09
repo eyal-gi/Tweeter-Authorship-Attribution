@@ -283,6 +283,12 @@ def pos_tag_feature(df):
 
 
 def lm_eval_feature(df):
+    """
+    Creates a features based on the Score from a language model which is based on the Train Trumps' tweets.
+    Every tweet is evaluated by the lm, and the log probability is added as the feature value.
+    :param df: DataFrame
+    :return: the df with the new feature
+    """
     trump_tweets = list(df.loc[df.label == 0, 'tweet'])
     text = " ".join(trump_tweets)
     nt = language_model.normalize_text(text)  # lower casing, padding punctuation with white spaces
@@ -293,6 +299,7 @@ def lm_eval_feature(df):
         scores.append(lm.evaluate(t))
 
     df['lm_evaluation'] = scores
+    return df
 
 
 def feature_understanding(df):
