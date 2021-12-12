@@ -17,7 +17,6 @@ from dython import nominal
 from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
-import language_model
 
 
 # nltk.download('vader_lexicon')
@@ -100,8 +99,6 @@ def preliminary_feature_extraction(df):
     publish_time_feature(pfe_df)
     # #### Pos Tag feature: ####
     pos_tag_feature(pfe_df)
-
-    lm_eval_feature(pfe_df)
 
     return pfe_df
 
@@ -281,25 +278,6 @@ def pos_tag_feature(df):
     return df
 
 
-def lm_eval_feature(df):
-    """
-    Creates a features based on the Score from a language model which is based on the Train Trumps' tweets.
-    Every tweet is evaluated by the lm, and the log probability is added as the feature value.
-    :param df: DataFrame
-    :return: the df with the new feature
-    """
-    trump_tweets = list(df.loc[df.label == 0, 'tweet'])
-    text = " ".join(trump_tweets)
-    nt = language_model.normalize_text(text)  # lower casing, padding punctuation with white spaces
-    lm = language_model.Ngram_Language_Model(n=3, chars=False)
-    lm.build_model(nt)  #
-    scores = []
-    for t in df['tweet']:
-        scores.append(lm.evaluate(t))
-
-    df['lm_evaluation'] = scores
-    return df
-
 
 def feature_understanding(df):
     """
@@ -308,7 +286,7 @@ def feature_understanding(df):
     """
     pd.options.display.max_columns = 10
     pd.options.display.width = 1000
-    features = ['lm_evaluation', 'tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
+    features = ['tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
                 'tag_realDonaldTrump',
                 'full_cap_words_count', 'cap_words_count', 'negative_score', 'tweet_length', 'hr_publish_time', 'NN',
                 'DT', 'IN', 'JJ', 'NNS', 'VBZ', 'VBD']
@@ -330,8 +308,7 @@ def features_plots(df, col_name):
     # ---------------------#
     if col_name == 'tags_count' or col_name == 'hashtags_count' or col_name == 'ex_mark' or col_name == 'negative_score' \
             or col_name == 'tweet_length' or col_name == 'hr_publish_time' or col_name == 'NN' or col_name == 'DT' \
-            or col_name == 'IN' or col_name == 'JJ' or col_name == 'NNS' or col_name == 'VBZ' or col_name == 'VBD' \
-            or col_name == 'lm_evaluation':
+            or col_name == 'IN' or col_name == 'JJ' or col_name == 'NNS' or col_name == 'VBZ' or col_name == 'VBD':
         sns.boxplot(x='label', y=col_name, data=m_df, palette='Set2', showmeans=True,
                     meanprops={"marker": "o", "markerfacecolor": "white", "markeredgecolor": "black"})
         plt.title(col_name)
@@ -416,7 +393,7 @@ def make_categorized_from_hr_publish(df):
 
 def set_type_for_features(df):
     """
-    This fucntion get df and convert each feature to his type
+    This fucntion get df and convert relevant features to a new type
     :param df: DataFrame
     :return: df with the correct type of features
 
@@ -441,39 +418,89 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-def feature_selection(df):
-    df = df.drop('id', axis=1)
+def feature_selection(df, test_flag = False):
+    """
+    This function get df, drop the features that we understand that are not relevant or good enough for us and return
+    final df for train and test.
+
+    :param df: DataFrame
+    :return: The final Dataframes for train and test
+    """
+    # Prepare data
+    final_df = copy.deepcopy(df)
+    normalize_features(final_df, ['hashtags_count' , 'tweet_length' , 'tags_count']) # normalized the features to be between [0,1].
+    final_df = make_categorized_from_hr_publish(final_df) #make categories from hr_publish_time feature
+    final_df = pd.get_dummies(final_df, columns =['hr_publish_time'], drop_first=True) # get dummies for categorical feature
+    # Features selection
+    if not test_flag:
+        final_df = final_df.drop('id',axis=1)
+        final_df = final_df.drop('user',axis=1)
+        final_df = final_df.drop('tweet',axis=1)
+        final_df = final_df.drop('time',axis=1)
+        final_df = final_df.drop('device',axis=1)
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        # final_df.to_csv('train_df.csv')
+    else:
+        final_df = final_df.drop('user', axis=1)
+        final_df = final_df.drop('tweet', axis=1)
+        final_df = final_df.drop('time', axis=1)
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        # final_df.to_csv('test_df.csv')
+
+    return final_df
+
+
+
+
 
 
 def pre_process_main():
-    train_data = read_data('trump_train.tsv')  # read the data
-    train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction
+    ########### Train data - read and make features ###########
+    train_data = read_data('trump_train.tsv')  # read train data
+    train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction for train data
+    ########### Test data - ead and make features ###########
+    test_data = read_data('trump_test.tsv' , True) # read test data
+    test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
+
+    ########### Data Understanding - plots and correlation ###############
     # feature_understanding(train_data_fe)
-    normalize_features(train_data_fe, ['hashtags_count' , 'tweet_length' , 'tags_count', 'lm_evaluation']) # normalized the features to be between [0,1].
-    train_data_fe = make_categorized_from_hr_publish(train_data_fe)
-    train_data_fe = pd.get_dummies(train_data_fe, columns =['hr_publish_time'], drop_first=True)
-    # pd.set_option('display.max_columns' , None)
-    # print(train_data_fe)
-
-    ######################################## for correlation ##########################################################
-    train_data_fe=set_type_for_features(train_data_fe) # make the type boolean for the correlation heatmap
-    feature_correlation(train_data_fe) #make a heatmap correlation
+    # normalize_features(train_data_fe, ['hashtags_count' , 'tweet_length' , 'tags_count']) # normalized the features to be between [0,1].
+    # train_data_fe = make_categorized_from_hr_publish(train_data_fe)
+    # train_data_fe = pd.get_dummies(train_data_fe, columns =['hr_publish_time'], drop_first=True)
+    ######################################## For correlation ##########################################################
+    # train_data_fe=set_type_for_features(train_data_fe) # make the type boolean for the correlation heatmap
+    # feature_correlation(train_data_fe) #make a heatmap correlation
     ###################################################################################################################
-    # pre_processing() (feature_selection) #chage name to make_final_data or something like that
 
-    # make train and test from the train data
-    temp_df = copy.deepcopy(train_data_fe)
-    X_train = temp_df.drop('label', axis=1)
-    Y_train = temp_df['label']
-    x_train, x_test_check, y_train, y_test_check = train_test_split(X_train, Y_train, test_size=0.1,
-                                                                    random_state=42, stratify=Y_train)
-    pass
+    ################# Feature Selection And Make Final Train and Test Df #################
+    final_train_df = feature_selection(train_data_fe)
+    final_test_df = feature_selection(test_data_fe,True)
+
+    return final_train_df , final_test_df
 
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
 ########################################################################################################################
 
+######### split for features and labels ############
+def read_and_split_data():
+    """
+    This function read the data after features selection and split it to X_train , Y_train and for X_test
+    """
+    train_df = pd.read_csv('train_df.csv')
+    X_test = pd.read_csv('test_df.csv')
+    X_train = train_df.drop('label', axis=1)
+    Y_train = train_df[['label']]
+
+    return X_train ,Y_train , X_test
+
+
+
+
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
-    pre_process_main()
+    # pre_process_main()
+    read_and_split_data()
