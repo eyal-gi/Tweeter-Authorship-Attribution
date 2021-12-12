@@ -381,6 +381,21 @@ def features_plots(df, col_name):
         plt.show()
 
 
+def data_understanding(df):
+    """
+        All the functions used to understand the data for feature selection.
+    """
+    du_df = copy.deepcopy(df)
+    feature_understanding(du_df)
+    normalize_features(du_df,
+                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    du_df = make_categorized_from_hr_publish(du_df)
+    du_df = pd.get_dummies(du_df, columns=['hr_publish_time', 'publish_day'], drop_first=True)
+
+    ######################################## for correlation ##########################################################
+    du_df = set_type_for_features(du_df)  # make the type boolean for the correlation heatmap
+    feature_correlation(du_df)  # make a heatmap correlation
+
 def normalize_features(df, column_name_list: list):
     """
     This function rum over specific columns by the column_name_list and normalizes the column by the max value in it.
@@ -479,10 +494,6 @@ def feature_selection(df, test_flag = False):
     return final_df
 
 
-
-
-
-
 def pre_process_main():
     ########### Train data - read and make features ###########
     train_data = read_data('trump_train.tsv')  # read train data
@@ -492,19 +503,7 @@ def pre_process_main():
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
-    # feature_understanding(train_data_fe)
-    normalize_features(train_data_fe,
-                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
-    train_data_fe = make_categorized_from_hr_publish(train_data_fe)
-    train_data_fe = pd.get_dummies(train_data_fe, columns=['hr_publish_time'], drop_first=True)
-    # pd.set_option('display.max_columns' , None)
-    # print(train_data_fe)
-
-    ######################################## for correlation ##########################################################
-    # train_data_fe = set_type_for_features(train_data_fe)  # make the type boolean for the correlation heatmap
-    # feature_correlation(train_data_fe)  # make a heatmap correlation
-    ###################################################################################################################
-    # pre_processing() (feature_selection) #chage name to make_final_data or something like that
+    # data_understanding(test_data_fe)
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
@@ -531,8 +530,9 @@ def read_and_split_data():
 
 
 
-
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     # pre_process_main()
-    read_and_split_data()
+    X_train, Y_train, X_test = read_and_split_data()
+
+
