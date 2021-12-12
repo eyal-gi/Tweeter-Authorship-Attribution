@@ -10,6 +10,7 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import cross_validate
+from sklearn.model_selection import GridSearchCV
 from sklearn import svm
 import pickle
 import seaborn as sns
@@ -19,11 +20,15 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk import TweetTokenizer
 from datetime import datetime
 from collections import Counter
-from dython import nominal
 from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
 import calendar
+
+# put in comments (imports for data understanding and hyper parameters tuning
+# from dython import nominal
+from tabulate import tabulate
+
 
 # nltk.download('vader_lexicon')
 # nltk.download('punkt')
@@ -253,6 +258,7 @@ def publish_time_feature(df):
 
     return df
 
+
 def publish_day_feature(df):
     """
     This function check at what day the tweet was published and return the df with the new feature.
@@ -271,6 +277,7 @@ def publish_day_feature(df):
     df['publish_day'] = day_list
 
     return df
+
 
 def pos_tag_feature(df):
     """
@@ -310,7 +317,7 @@ def feature_understanding(df):
     """
     pd.options.display.max_columns = 10
     pd.options.display.width = 1000
-    features = ['publish_day','tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
+    features = ['publish_day', 'tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
                 'tag_realDonaldTrump',
                 'full_cap_words_count', 'cap_words_count', 'negative_score', 'tweet_length', 'hr_publish_time', 'NN',
                 'DT', 'IN', 'JJ', 'NNS', 'VBZ', 'VBD']
@@ -377,7 +384,7 @@ def features_plots(df, col_name):
             plt.xlabel('Hour')
         elif col_name == 'publish_day':
             labels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-            plt.hist(x=x,bins=7, density=True, histtype='step', label=['Trump', 'Not Trump'])
+            plt.hist(x=x, bins=7, density=True, histtype='step', label=['Trump', 'Not Trump'])
             plt.xticks(ticks=range(7), labels=labels)
             plt.xlabel('Day')
 
@@ -401,6 +408,7 @@ def data_understanding(df):
     ######################################## for correlation ##########################################################
     du_df = set_type_for_features(du_df)  # make the type boolean for the correlation heatmap
     feature_correlation(du_df)  # make a heatmap correlation
+
 
 def normalize_features(df, column_name_list: list):
     """
@@ -435,7 +443,8 @@ def make_categorized_from_hr_publish(df):
     df['hr_publish_time'] = pd.cut(df['hr_publish_time'], bins=[3, 10, 16, 26], include_lowest=True,
                                    labels=['morning', 'noon', 'evening-night'])
 
-    df['publish_day'] = pd.cut(df['publish_day'], bins=[0, 1, 6], include_lowest=True, labels=['sunday-monday', 'rest_of_days'])
+    df['publish_day'] = pd.cut(df['publish_day'], bins=[0, 1, 6], include_lowest=True,
+                               labels=['sunday-monday', 'rest_of_days'])
     return df
 
 
@@ -466,7 +475,7 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-def feature_selection(df, test_flag = False):
+def feature_selection(df, test_flag=False):
     """
     This function get df, drop the features that we understand that are not relevant or good enough for us and return
     final df for train and test.
@@ -476,25 +485,27 @@ def feature_selection(df, test_flag = False):
     """
     # Prepare data
     final_df = copy.deepcopy(df)
-    normalize_features(final_df, ['hashtags_count' , 'tweet_length' , 'tags_count']) # normalized the features to be between [0,1].
-    final_df = make_categorized_from_hr_publish(final_df) #make categories from hr_publish_time feature
-    final_df = pd.get_dummies(final_df, columns =['hr_publish_time'], drop_first=True) # get dummies for categorical feature
+    normalize_features(final_df,
+                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    final_df = make_categorized_from_hr_publish(final_df)  # make categories from hr_publish_time feature
+    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],
+                              drop_first=True)  # get dummies for categorical feature
     # Features selection
     if not test_flag:
-        final_df = final_df.drop('id',axis=1)
-        final_df = final_df.drop('user',axis=1)
-        final_df = final_df.drop('tweet',axis=1)
-        final_df = final_df.drop('time',axis=1)
-        final_df = final_df.drop('device',axis=1)
-        final_df = final_df.drop('written_time',axis=1)
-        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('id', axis=1)
+        final_df = final_df.drop('user', axis=1)
+        final_df = final_df.drop('tweet', axis=1)
+        final_df = final_df.drop('time', axis=1)
+        final_df = final_df.drop('device', axis=1)
+        final_df = final_df.drop('written_time', axis=1)
+        final_df = final_df.drop('ex_mark', axis=1)
         # final_df.to_csv('train_df.csv')
     else:
         final_df = final_df.drop('user', axis=1)
         final_df = final_df.drop('tweet', axis=1)
         final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('written_time',axis=1)
-        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('written_time', axis=1)
+        final_df = final_df.drop('ex_mark', axis=1)
         # final_df.to_csv('test_df.csv')
 
     return final_df
@@ -505,7 +516,7 @@ def pre_process_main():
     train_data = read_data('trump_train.tsv')  # read train data
     train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction for train data
     ########### Test data - ead and make features ###########
-    test_data = read_data('trump_test.tsv' , True) # read test data
+    test_data = read_data('trump_test.tsv', True)  # read test data
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
@@ -513,9 +524,10 @@ def pre_process_main():
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
-    final_test_df = feature_selection(test_data_fe,True)
+    final_test_df = feature_selection(test_data_fe, True)
 
-    return final_train_df , final_test_df
+    return final_train_df, final_test_df
+
 
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
@@ -529,27 +541,47 @@ def read_and_split_data():
     train_df = pd.read_csv('train_df.csv')
     X_test = pd.read_csv('test_df.csv')
     X_train = train_df.drop('label', axis=1)
-    Y_train = train_df[['label']]
-    Y_train = Y_train['label']
+    Y_train = train_df['label']
 
-    return X_train ,Y_train , X_test
+    return X_train, Y_train, X_test
 
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
     scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True)
-    # report performance
-    print(scores)
-    print(scores['test_score'], scores['train_score'])
-    print('Validation Accuracy: %.3f (%.3f)' % (mean(scores['test_score']), std(scores['test_score'])))
+    print(
+        f"Validation Accuracy: {'{:.3}'.format(mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(mean(scores['train_score']))}")
+
+    return cv
+
+
+def param_tuning(clf, x_train, y_train, params_grid, cv):
+    print('SVM classifier -- Hyper Parameters Tuning')
+    grid_search = GridSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', refit=True, cv=cv, verbose=3,
+                               return_train_score=True)
+    grid_search.fit(x_train, y_train)
+
+    Results = pd.DataFrame(grid_search.cv_results_)
+    print('The best parameters are:', grid_search.best_params_)
+    results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[['params', 'mean_test_score', 'mean_train_score']]
+    headers_val = ["Number", "Parameters", "Validation score", 'Train score']
+    print(tabulate(results_grid_search1, headers=headers_val, tablefmt="grid"))
+    y_val = Results['mean_test_score']
+    y_train = Results['mean_train_score']
 
     pass
 
+
 def svm_model(x_train, y_train):
-    svm_clf = svm.SVC(kernel='linear' ,random_state=42)  # basic model
-    kfold_validation(svm_clf, x_train, y_train)
+    print('SVM classifier')
+    svm_clf = svm.SVC(random_state=42)  # basic model
+    cv = kfold_validation(svm_clf, x_train, y_train)
+    param_grid = {'C': [0.01, 0.1, 0.5, 1, 5, 10, 100],
+                  'kernel': ['linear', 'rbf', 'poly'],
+                  'gamma': [0.0001, 0.001, 0.01, 0.1, 1, 10]
+                  }
 
-
+    param_tuning(svm_clf, x_train, y_train, param_grid, cv)
 
 
 if __name__ == '__main__':
@@ -559,5 +591,3 @@ if __name__ == '__main__':
 
     # logistics_regression_model()
     svm_model(X_train, Y_train)
-
-
