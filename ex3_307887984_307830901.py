@@ -17,8 +17,7 @@ from dython import nominal
 from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
-import language_model
-
+import calendar
 
 # nltk.download('vader_lexicon')
 # nltk.download('punkt')
@@ -28,7 +27,6 @@ import language_model
 ########################################################################################################################
 # --------------------------------------- Data Understanding & Pre Processing ----------------------------------------#
 ########################################################################################################################
-
 
 def load_best_model():
     pass
@@ -98,6 +96,8 @@ def preliminary_feature_extraction(df):
     tweet_length_feature(pfe_df)
     ## Checking the time that the tweets were published
     publish_time_feature(pfe_df)
+    # #### Tweet publish day Feature: ####
+    publish_day_feature(pfe_df)
     # #### Pos Tag feature: ####
     pos_tag_feature(pfe_df)
 
@@ -247,6 +247,24 @@ def publish_time_feature(df):
 
     return df
 
+def publish_day_feature(df):
+    """
+    This function check at what day the tweet was published and return the df with the new feature.
+    :param df: df with all the features until now
+    :return: df: the df with the new feature
+
+    The function use datetime to get the day of publish and use it as feature.
+    """
+    day_list = []
+    df['time'] = pd.to_datetime(df['time'])  # convert to datetime
+    for date_time in df['time']:
+        # day = calendar.day_name[date_time.weekday()]
+        day = date_time.weekday() + 1
+        if day == 7: day = 0
+        day_list.append(day)
+    df['publish_day'] = day_list
+
+    return df
 
 def pos_tag_feature(df):
     """
@@ -279,7 +297,6 @@ def pos_tag_feature(df):
     return df
 
 
-
 def feature_understanding(df):
     """
     Visualise the features to better understand the data.
@@ -287,7 +304,7 @@ def feature_understanding(df):
     """
     pd.options.display.max_columns = 10
     pd.options.display.width = 1000
-    features = ['tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
+    features = ['publish_day','tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
                 'tag_realDonaldTrump',
                 'full_cap_words_count', 'cap_words_count', 'negative_score', 'tweet_length', 'hr_publish_time', 'NN',
                 'DT', 'IN', 'JJ', 'NNS', 'VBZ', 'VBD']
@@ -341,16 +358,24 @@ def features_plots(df, col_name):
 
     #### HISTOGRAMS #####
     # ---------------------#
-    if col_name == 'hr_publish_time':
-        x = [df.loc[df.label == 0, 'hr_publish_time'],
-             df.loc[df.label == 1, 'hr_publish_time']]
-        plt.hist(x=x, bins=24, density=True, histtype='step', label=['Trump', 'Not Trump'])
-        plt.xticks(ticks=range(24),
-                   labels=['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00',
-                           '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00',
-                           '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'])
-        plt.title('Tweet published hour')
-        plt.xlabel('Hour')
+    if col_name == 'hr_publish_time' or col_name == 'publish_day':
+        x = [df.loc[df.label == 0, col_name],
+             df.loc[df.label == 1, col_name]]
+        if col_name == 'hr_publish_time':
+            labels = ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00',
+                      '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00',
+                      '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00']
+
+            plt.hist(x=x, bins=24, density=True, histtype='step', label=['Trump', 'Not Trump'])
+            plt.xticks(ticks=range(24), labels=labels)
+            plt.xlabel('Hour')
+        elif col_name == 'publish_day':
+            labels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+            plt.hist(x=x,bins=7, density=True, histtype='step', label=['Trump', 'Not Trump'])
+            plt.xticks(ticks=range(7), labels=labels)
+            plt.xlabel('Day')
+
+        plt.title(col_name)
         plt.ylabel('Frequency')
         plt.legend()
         plt.show()
@@ -386,9 +411,10 @@ def make_categorized_from_hr_publish(df):
             temp_df.at[i, 'hr_publish_time'] = 26
 
     df = temp_df
-    df['hr_publish_time'] = pd.cut(df['hr_publish_time'], bins=[3, 10, 16, 26],
+    df['hr_publish_time'] = pd.cut(df['hr_publish_time'], bins=[3, 10, 16, 26], include_lowest=True,
                                    labels=['morning', 'noon', 'evening-night'])
 
+    df['publish_day'] = pd.cut(df['publish_day'], bins=[0, 1, 6], include_lowest=True, labels=['sunday-monday', 'rest_of_days'])
     return df
 
 
@@ -413,9 +439,9 @@ def feature_correlation(df):
     :param df: DataFrame
     :return: Heatmap of correlations
     """
-    temp_df = df
+    temp_df = copy.deepcopy(df)
     temp_df = temp_df.drop(['id', 'user', 'tweet', 'time', 'device'],
-                           axis=1)  # drop not relevant featurs before make a heatmap of correlations
+                           axis=1)  # drop not relevant features before make a heatmap of correlations
     nominal.associations(temp_df, nominal_columns='all')
 
 
@@ -467,13 +493,18 @@ def pre_process_main():
 
     ########### Data Understanding - plots and correlation ###############
     # feature_understanding(train_data_fe)
-    # normalize_features(train_data_fe, ['hashtags_count' , 'tweet_length' , 'tags_count']) # normalized the features to be between [0,1].
-    # train_data_fe = make_categorized_from_hr_publish(train_data_fe)
-    # train_data_fe = pd.get_dummies(train_data_fe, columns =['hr_publish_time'], drop_first=True)
-    ######################################## For correlation ##########################################################
-    # train_data_fe=set_type_for_features(train_data_fe) # make the type boolean for the correlation heatmap
-    # feature_correlation(train_data_fe) #make a heatmap correlation
+    normalize_features(train_data_fe,
+                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    train_data_fe = make_categorized_from_hr_publish(train_data_fe)
+    train_data_fe = pd.get_dummies(train_data_fe, columns=['hr_publish_time'], drop_first=True)
+    # pd.set_option('display.max_columns' , None)
+    # print(train_data_fe)
+
+    ######################################## for correlation ##########################################################
+    # train_data_fe = set_type_for_features(train_data_fe)  # make the type boolean for the correlation heatmap
+    # feature_correlation(train_data_fe)  # make a heatmap correlation
     ###################################################################################################################
+    # pre_processing() (feature_selection) #chage name to make_final_data or something like that
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
