@@ -1,9 +1,15 @@
+from numpy import mean
+from numpy import std
 import csv
 import nltk
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_validate
 from sklearn import svm
 import pickle
 import seaborn as sns
@@ -524,8 +530,24 @@ def read_and_split_data():
     X_test = pd.read_csv('test_df.csv')
     X_train = train_df.drop('label', axis=1)
     Y_train = train_df[['label']]
+    Y_train = Y_train['label']
 
     return X_train ,Y_train , X_test
+
+
+def kfold_validation(clf, x_train, y_train):
+    cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True)
+    # report performance
+    print(scores)
+    print(scores['test_score'], scores['train_score'])
+    print('Validation Accuracy: %.3f (%.3f)' % (mean(scores['test_score']), std(scores['test_score'])))
+
+    pass
+
+def svm_model(x_train, y_train):
+    svm_clf = svm.SVC(kernel='linear' ,random_state=42)  # basic model
+    kfold_validation(svm_clf, x_train, y_train)
 
 
 
@@ -534,5 +556,8 @@ if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     # pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
+
+    # logistics_regression_model()
+    svm_model(X_train, Y_train)
 
 
