@@ -85,7 +85,7 @@ def read_data(data_name, test=False):
 def preliminary_feature_extraction(df):
     """
     Preliminary creation of features out of the data.
-    The extracted features are: negative score of each tweet (float), Use of quotes in the tweet (boolean),
+    The extracted features are: positive score of each tweet (float), Use of quotes in the tweet (boolean),
     Publish hour(time), Number of hashtags in the tweet (int), URL in the tweet (boolean),
     Events times (boolean),	2 or more Exclamation mark (int), Tweet length (int),
     Normalized Number of capital lettered words (float), number of words beginning with capital letter (float),
@@ -102,8 +102,8 @@ def preliminary_feature_extraction(df):
     count_capital_words(pfe_df)
     # #### Tags himself (#realDonaldTrump) in tweet
     find_pattern(pfe_df, None, 'tag_realDonaldTrump')
-    # #### Negative score for each tweet (knows that trump tweets are more negative than his staff): ####
-    negative_score_for_tweet_feature(pfe_df)
+    # #### positive score for each tweet (knows that trump tweets are more negative than his staff): ####
+    positive_score_for_tweet_feature(pfe_df)
     # #### length of tweet (the length of trump tweets are on average 7 words longer than the rest): ####
     tweet_length_feature(pfe_df)
     ## Checking the time that the tweets were published
@@ -204,9 +204,9 @@ def count_capital_words(df):
     return df
 
 
-def negative_score_for_tweet_feature(df):
+def positive_score_for_tweet_feature(df):
     """
-    This function calculate the negative score of the tweet and return the df with the new feature.
+    This function calculate the positive score of the tweet and return the df with the new feature.
     :param df: df with all the features until now
     :return: df: the df with the new feature
 
@@ -217,9 +217,9 @@ def negative_score_for_tweet_feature(df):
     neg_score_list = []
     for tweet in df['tweet']:  # run over tweets
         tweet_score = sia.polarity_scores(tweet)
-        neg_score = tweet_score['neg']  # take the negative score
+        neg_score = tweet_score['pos']  # take the positive score
         neg_score_list.append(neg_score)
-    df['negative_score'] = neg_score_list  # add the negative_score feature to our df
+    df['positive_score'] = neg_score_list  # add the positive_score feature to our df
 
     return df
 
@@ -320,7 +320,7 @@ def feature_understanding(df):
     pd.options.display.width = 1000
     features = ['publish_day', 'tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
                 'tag_realDonaldTrump',
-                'full_cap_words_count', 'cap_words_count', 'negative_score', 'tweet_length', 'hr_publish_time', 'NN',
+                'full_cap_words_count', 'cap_words_count', 'positive_score', 'tweet_length', 'hr_publish_time', 'NN',
                 'DT', 'IN', 'JJ', 'NNS', 'VBZ', 'VBD']
     for f in features:
         features_plots(df, f)
@@ -338,7 +338,7 @@ def features_plots(df, col_name):
 
     #### BOX-PLOTS & BAR-PLOTS #####
     # ---------------------#
-    if col_name == 'tags_count' or col_name == 'hashtags_count' or col_name == 'ex_mark' or col_name == 'negative_score' \
+    if col_name == 'tags_count' or col_name == 'hashtags_count' or col_name == 'ex_mark' or col_name == 'positive_score' \
             or col_name == 'tweet_length' or col_name == 'hr_publish_time' or col_name == 'NN' or col_name == 'DT' \
             or col_name == 'IN' or col_name == 'JJ' or col_name == 'NNS' or col_name == 'VBZ' or col_name == 'VBD':
         sns.boxplot(x='label', y=col_name, data=m_df, palette='Set2', showmeans=True,
@@ -500,9 +500,13 @@ def feature_selection(df, test_flag = False):
         final_df = final_df.drop('written_time',axis=1)
         final_df = final_df.drop('ex_mark',axis=1)
         final_df = final_df.drop('publish_day',axis=1)
-        final_df = final_df.drop('negative_score', axis=1)
+        final_df = final_df.drop('positive_score',axis=1)
+        final_df = final_df.drop('VBZ',axis=1)
+        final_df = final_df.drop('VBD',axis=1)
 
-        # final_df.to_csv('train_df.csv')
+
+        final_df.to_csv('train_df.csv',index=False)
+
     else:
         final_df = final_df.drop('user', axis=1)
         final_df = final_df.drop('tweet', axis=1)
@@ -510,9 +514,11 @@ def feature_selection(df, test_flag = False):
         final_df = final_df.drop('written_time',axis=1)
         final_df = final_df.drop('ex_mark',axis=1)
         final_df = final_df.drop('publish_day',axis=1)
-        final_df = final_df.drop('negative_score', axis=1)
+        final_df = final_df.drop('positive_score',axis=1)
+        final_df = final_df.drop('VBZ',axis=1)
+        final_df = final_df.drop('VBD',axis=1)
 
-        # final_df.to_csv('test_df.csv')
+        final_df.to_csv('test_df.csv',index=False)
 
     return final_df
 
@@ -526,7 +532,7 @@ def pre_process_main():
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
-    # data_understanding(test_data_fe)
+    # data_understanding(train_data_fe)
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
@@ -607,8 +613,8 @@ def logistic_regression_model(x_train, y_train):
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
-    # pre_process_main()
+    pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
-    #
+
     logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
