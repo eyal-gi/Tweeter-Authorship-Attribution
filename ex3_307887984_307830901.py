@@ -81,7 +81,7 @@ def read_data(data_name, test=False):
 def preliminary_feature_extraction(df):
     """
     Preliminary creation of features out of the data.
-    The extracted features are: negative score of each tweet (float), Use of quotes in the tweet (boolean),
+    The extracted features are: positive score of each tweet (float), Use of quotes in the tweet (boolean),
     Publish hour(time), Number of hashtags in the tweet (int), URL in the tweet (boolean),
     Events times (boolean),	2 or more Exclamation mark (int), Tweet length (int),
     Normalized Number of capital lettered words (float), number of words beginning with capital letter (float),
@@ -98,8 +98,8 @@ def preliminary_feature_extraction(df):
     count_capital_words(pfe_df)
     # #### Tags himself (#realDonaldTrump) in tweet
     find_pattern(pfe_df, None, 'tag_realDonaldTrump')
-    # #### Negative score for each tweet (knows that trump tweets are more negative than his staff): ####
-    negative_score_for_tweet_feature(pfe_df)
+    # #### positive score for each tweet (knows that trump tweets are more negative than his staff): ####
+    positive_score_for_tweet_feature(pfe_df)
     # #### length of tweet (the length of trump tweets are on average 7 words longer than the rest): ####
     tweet_length_feature(pfe_df)
     ## Checking the time that the tweets were published
@@ -200,9 +200,9 @@ def count_capital_words(df):
     return df
 
 
-def negative_score_for_tweet_feature(df):
+def positive_score_for_tweet_feature(df):
     """
-    This function calculate the negative score of the tweet and return the df with the new feature.
+    This function calculate the positive score of the tweet and return the df with the new feature.
     :param df: df with all the features until now
     :return: df: the df with the new feature
 
@@ -213,9 +213,9 @@ def negative_score_for_tweet_feature(df):
     neg_score_list = []
     for tweet in df['tweet']:  # run over tweets
         tweet_score = sia.polarity_scores(tweet)
-        neg_score = tweet_score['neg']  # take the negative score
+        neg_score = tweet_score['pos']  # take the positive score
         neg_score_list.append(neg_score)
-    df['negative_score'] = neg_score_list  # add the negative_score feature to our df
+    df['positive_score'] = neg_score_list  # add the positive_score feature to our df
 
     return df
 
@@ -316,7 +316,7 @@ def feature_understanding(df):
     pd.options.display.width = 1000
     features = ['publish_day', 'tags_count', 'hashtags_count', 'quotes', 'url', 'written_time', 'ex_mark',
                 'tag_realDonaldTrump',
-                'full_cap_words_count', 'cap_words_count', 'negative_score', 'tweet_length', 'hr_publish_time', 'NN',
+                'full_cap_words_count', 'cap_words_count', 'positive_score', 'tweet_length', 'hr_publish_time', 'NN',
                 'DT', 'IN', 'JJ', 'NNS', 'VBZ', 'VBD']
     for f in features:
         features_plots(df, f)
@@ -334,7 +334,7 @@ def features_plots(df, col_name):
 
     #### BOX-PLOTS & BAR-PLOTS #####
     # ---------------------#
-    if col_name == 'tags_count' or col_name == 'hashtags_count' or col_name == 'ex_mark' or col_name == 'negative_score' \
+    if col_name == 'tags_count' or col_name == 'hashtags_count' or col_name == 'ex_mark' or col_name == 'positive_score' \
             or col_name == 'tweet_length' or col_name == 'hr_publish_time' or col_name == 'NN' or col_name == 'DT' \
             or col_name == 'IN' or col_name == 'JJ' or col_name == 'NNS' or col_name == 'VBZ' or col_name == 'VBD':
         sns.boxplot(x='label', y=col_name, data=m_df, palette='Set2', showmeans=True,
@@ -472,7 +472,7 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-def feature_selection(df, test_flag=False):
+def feature_selection(df, test_flag = False):
     """
     This function get df, drop the features that we understand that are not relevant or good enough for us and return
     final df for train and test.
@@ -482,28 +482,39 @@ def feature_selection(df, test_flag=False):
     """
     # Prepare data
     final_df = copy.deepcopy(df)
-    normalize_features(final_df,
-                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    normalize_features(final_df, ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
     final_df = make_categorized_from_hr_publish(final_df)  # make categories from hr_publish_time feature
-    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],
-                              drop_first=True)  # get dummies for categorical feature
+    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],drop_first=True)  # get dummies for categorical feature
+
     # Features selection
     if not test_flag:
-        final_df = final_df.drop('id', axis=1)
-        final_df = final_df.drop('user', axis=1)
-        final_df = final_df.drop('tweet', axis=1)
-        final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('device', axis=1)
-        final_df = final_df.drop('written_time', axis=1)
-        final_df = final_df.drop('ex_mark', axis=1)
-        # final_df.to_csv('train_df.csv')
+        final_df = final_df.drop('id',axis=1)
+        final_df = final_df.drop('user',axis=1)
+        final_df = final_df.drop('tweet',axis=1)
+        final_df = final_df.drop('time',axis=1)
+        final_df = final_df.drop('device',axis=1)
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('publish_day',axis=1)
+        final_df = final_df.drop('positive_score',axis=1)
+        final_df = final_df.drop('VBZ',axis=1)
+        final_df = final_df.drop('VBD',axis=1)
+
+
+        final_df.to_csv('train_df.csv',index=False)
+
     else:
         final_df = final_df.drop('user', axis=1)
         final_df = final_df.drop('tweet', axis=1)
         final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('written_time', axis=1)
-        final_df = final_df.drop('ex_mark', axis=1)
-        # final_df.to_csv('test_df.csv')
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('publish_day',axis=1)
+        final_df = final_df.drop('positive_score',axis=1)
+        final_df = final_df.drop('VBZ',axis=1)
+        final_df = final_df.drop('VBD',axis=1)
+
+        final_df.to_csv('test_df.csv',index=False)
 
     return final_df
 
@@ -517,7 +528,7 @@ def pre_process_main():
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
-    # data_understanding(test_data_fe)
+    # data_understanding(train_data_fe)
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
@@ -545,7 +556,7 @@ def read_and_split_data():
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True)
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True) # score for model without hyper parameters tuning.
     print(
         f"Validation Accuracy: {'{:.3}'.format(mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(mean(scores['train_score']))}")
 
@@ -554,7 +565,7 @@ def kfold_validation(clf, x_train, y_train):
 
 def param_tuning(clf, x_train, y_train, params_grid, cv):
     grid_search = GridSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', refit=True, cv=cv, verbose=3,
-                               return_train_score=True, n_jobs=-1)
+                               return_train_score=True)
     grid_search.fit(x_train, y_train)
 
     Results = pd.DataFrame(grid_search.cv_results_)
@@ -579,6 +590,21 @@ def svm_model(x_train, y_train):
                   }
     print('SVM classifier -- Hyper Parameters Tuning')
     param_tuning(svm_clf, x_train, y_train, param_grid, cv)
+
+def logistic_regression_model(x_train, y_train):
+    print('Logistic Regression classifier')
+    logistic_regression_clf = LogisticRegression(max_iter=1000 , random_state=42)
+    cv = kfold_validation(logistic_regression_clf, x_train, y_train)
+    # param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
+    #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
+    #               }
+    # specific tuning after the big tuning
+    param_grid = {'C': [0.8, 1, 1.2, 1.5 ,2,4],
+                  'penalty': ['l1','l2'],
+                  'solver': ['liblinear','saga']
+                  }
+
+    param_tuning(logistic_regression_clf, x_train, y_train, param_grid, cv)
 
 
 def rf_model(x_train, y_train):
@@ -621,6 +647,6 @@ if __name__ == '__main__':
     # pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
 
-    # logistics_regression_model()
+    logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
     rf_model(X_train, Y_train)
