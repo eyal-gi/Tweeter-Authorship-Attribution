@@ -20,6 +20,7 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk import TweetTokenizer
 from datetime import datetime
 from collections import Counter
+from dython import nominal
 from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
@@ -475,7 +476,7 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-def feature_selection(df, test_flag=False):
+def feature_selection(df, test_flag = False):
     """
     This function get df, drop the features that we understand that are not relevant or good enough for us and return
     final df for train and test.
@@ -485,27 +486,29 @@ def feature_selection(df, test_flag=False):
     """
     # Prepare data
     final_df = copy.deepcopy(df)
-    normalize_features(final_df,
-                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    normalize_features(final_df, ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
     final_df = make_categorized_from_hr_publish(final_df)  # make categories from hr_publish_time feature
-    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],
-                              drop_first=True)  # get dummies for categorical feature
+    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],drop_first=True)  # get dummies for categorical feature
+
     # Features selection
     if not test_flag:
-        final_df = final_df.drop('id', axis=1)
-        final_df = final_df.drop('user', axis=1)
-        final_df = final_df.drop('tweet', axis=1)
-        final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('device', axis=1)
-        final_df = final_df.drop('written_time', axis=1)
-        final_df = final_df.drop('ex_mark', axis=1)
+        final_df = final_df.drop('id',axis=1)
+        final_df = final_df.drop('user',axis=1)
+        final_df = final_df.drop('tweet',axis=1)
+        final_df = final_df.drop('time',axis=1)
+        final_df = final_df.drop('device',axis=1)
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('publish_day',axis=1)
+
         # final_df.to_csv('train_df.csv')
     else:
         final_df = final_df.drop('user', axis=1)
         final_df = final_df.drop('tweet', axis=1)
         final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('written_time', axis=1)
-        final_df = final_df.drop('ex_mark', axis=1)
+        final_df = final_df.drop('written_time',axis=1)
+        final_df = final_df.drop('ex_mark',axis=1)
+        final_df = final_df.drop('publish_day',axis=1)
         # final_df.to_csv('test_df.csv')
 
     return final_df
@@ -548,7 +551,7 @@ def read_and_split_data():
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True)
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True) # score for model without hyper parameters tuning.
     print(
         f"Validation Accuracy: {'{:.3}'.format(mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(mean(scores['train_score']))}")
 
@@ -556,7 +559,7 @@ def kfold_validation(clf, x_train, y_train):
 
 
 def param_tuning(clf, x_train, y_train, params_grid, cv):
-    print('SVM classifier -- Hyper Parameters Tuning')
+    print('Logistic Regression classifier -- Hyper Parameters Tuning')
     grid_search = GridSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', refit=True, cv=cv, verbose=3,
                                return_train_score=True)
     grid_search.fit(x_train, y_train)
@@ -566,10 +569,10 @@ def param_tuning(clf, x_train, y_train, params_grid, cv):
     results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[['params', 'mean_test_score', 'mean_train_score']]
     headers_val = ["Number", "Parameters", "Validation score", 'Train score']
     print(tabulate(results_grid_search1, headers=headers_val, tablefmt="grid"))
-    y_val = Results['mean_test_score']
-    y_train = Results['mean_train_score']
-
-    pass
+    # y_val = Results['mean_test_score']
+    # y_train = Results['mean_train_score']
+    #
+    # pass
 
 
 def svm_model(x_train, y_train):
@@ -583,11 +586,26 @@ def svm_model(x_train, y_train):
 
     param_tuning(svm_clf, x_train, y_train, param_grid, cv)
 
+def logistic_regression_model(x_train, y_train):
+    print('Logistic Regression classifier')
+    logistic_regression_clf = LogisticRegression(max_iter=1000 , random_state=42)
+    cv = kfold_validation(logistic_regression_clf, x_train, y_train)
+    param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
+                  'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
+                  }
+    ## specific tuning after the big tuning
+    # param_grid = {'C': [0.8, 1, 1.2, 1.5 ,2],
+    #               'penalty': ['l1','l2'],
+    #               'solver': ['liblinear','saga']
+    #               }
+
+    param_tuning(logistic_regression_clf, x_train, y_train, param_grid, cv)
+
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     # pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
 
-    # logistics_regression_model()
-    svm_model(X_train, Y_train)
+    logistic_regression_model(X_train, Y_train)
+    # svm_model(X_train, Y_train)
