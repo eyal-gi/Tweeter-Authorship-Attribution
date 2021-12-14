@@ -5,13 +5,10 @@ import nltk
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import KFold
-from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import cross_validate
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
+    GridSearchCV, RandomizedSearchCV
 from sklearn import svm
+from sklearn.ensemble import RandomForestClassifier
 import pickle
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -556,16 +553,16 @@ def kfold_validation(clf, x_train, y_train):
 
 
 def param_tuning(clf, x_train, y_train, params_grid, cv):
-    print('SVM classifier -- Hyper Parameters Tuning')
     grid_search = GridSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', refit=True, cv=cv, verbose=3,
-                               return_train_score=True)
+                               return_train_score=True, n_jobs=-1)
     grid_search.fit(x_train, y_train)
 
     Results = pd.DataFrame(grid_search.cv_results_)
     print('The best parameters are:', grid_search.best_params_)
-    results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[['params', 'mean_test_score', 'mean_train_score']]
+    results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[
+        ['params', 'mean_test_score', 'mean_train_score']]
     headers_val = ["Number", "Parameters", "Validation score", 'Train score']
-    print(tabulate(results_grid_search1, headers=headers_val, tablefmt="grid"))
+    print(tabulate(results_grid_search1.head(10), headers=headers_val, tablefmt="grid"))
     y_val = Results['mean_test_score']
     y_train = Results['mean_train_score']
 
@@ -580,8 +577,43 @@ def svm_model(x_train, y_train):
                   'kernel': ['linear', 'rbf', 'poly'],
                   'gamma': [0.0001, 0.001, 0.01, 0.1, 1, 10]
                   }
-
+    print('SVM classifier -- Hyper Parameters Tuning')
     param_tuning(svm_clf, x_train, y_train, param_grid, cv)
+
+
+def rf_model(x_train, y_train):
+    print('Random Forest classifier')
+    rf_clf = RandomForestClassifier(random_state=42)  # basic model
+    cv = kfold_validation(rf_clf, x_train, y_train)
+
+    # #-----Params-----#
+    n_estimators = [int(x) for x in np.linspace(start=1, stop=2000, num=10)]  # Number of trees in random forest
+    max_features = ['sqrt', 'log2', None]  # Number of features to consider at every split
+    max_depth = [int(x) for x in np.linspace(1, 110, num=11)]  # Maximum number of levels in tree
+    max_depth.append(None)
+    min_samples_split = [2, 5, 10]  # Minimum number of samples required to split a node
+    min_samples_leaf = [1, 2, 4]  # Minimum number of samples required at each leaf node
+    bootstrap = [True, False]  # Method of selecting samples for training each tree
+
+    # param_grid = {'n_estimators': n_estimators,
+    #               'criterion': ['gini', 'entropy'],
+    #               'max_depth': max_depth,
+    #               'min_samples_split': min_samples_split,
+    #               'min_samples_leaf': min_samples_leaf,
+    #               'max_features': max_features,
+    #               'bootstrap': bootstrap}
+    # print('Random Forest classifier -- Hyper Parameters Tuning')
+    max_depth = list(range(50, 70, 2))
+    max_depth.append(None)
+    param_grid = {'n_estimators': [636],
+                  'criterion': ['gini'],
+                  'max_depth': max_depth,
+                  'min_samples_split': [1, 2, 3, 4, 5, 6],
+                  'min_samples_leaf': [4],
+                  'max_features': ["sqrt"],
+                  'bootstrap': [False]}
+
+    param_tuning(rf_clf, x_train, y_train, param_grid, cv)
 
 
 if __name__ == '__main__':
@@ -590,4 +622,5 @@ if __name__ == '__main__':
     X_train, Y_train, X_test = read_and_split_data()
 
     # logistics_regression_model()
-    svm_model(X_train, Y_train)
+    # svm_model(X_train, Y_train)
+    rf_model(X_train, Y_train)
