@@ -500,6 +500,7 @@ def feature_selection(df, test_flag = False):
         final_df = final_df.drop('written_time',axis=1)
         final_df = final_df.drop('ex_mark',axis=1)
         final_df = final_df.drop('publish_day',axis=1)
+        final_df = final_df.drop('negative_score', axis=1)
 
         # final_df.to_csv('train_df.csv')
     else:
@@ -509,6 +510,8 @@ def feature_selection(df, test_flag = False):
         final_df = final_df.drop('written_time',axis=1)
         final_df = final_df.drop('ex_mark',axis=1)
         final_df = final_df.drop('publish_day',axis=1)
+        final_df = final_df.drop('negative_score', axis=1)
+
         # final_df.to_csv('test_df.csv')
 
     return final_df
@@ -590,14 +593,14 @@ def logistic_regression_model(x_train, y_train):
     print('Logistic Regression classifier')
     logistic_regression_clf = LogisticRegression(max_iter=1000 , random_state=42)
     cv = kfold_validation(logistic_regression_clf, x_train, y_train)
-    param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
-                  'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
-                  }
-    ## specific tuning after the big tuning
-    # param_grid = {'C': [0.8, 1, 1.2, 1.5 ,2],
-    #               'penalty': ['l1','l2'],
-    #               'solver': ['liblinear','saga']
+    # param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
+    #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
     #               }
+    # specific tuning after the big tuning
+    param_grid = {'C': [0.8, 1, 1.2, 1.5 ,2,4],
+                  'penalty': ['l1','l2'],
+                  'solver': ['liblinear','saga']
+                  }
 
     param_tuning(logistic_regression_clf, x_train, y_train, param_grid, cv)
 
@@ -606,6 +609,6 @@ if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     # pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
-
+    #
     logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
