@@ -1,5 +1,3 @@
-from numpy import mean
-from numpy import std
 import csv
 import nltk
 import numpy as np
@@ -21,6 +19,7 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
 import calendar
+import torch
 
 # put in comments (imports for data understanding and hyper parameters tuning
 from dython import nominal
@@ -558,7 +557,7 @@ def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
     scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True) # score for model without hyper parameters tuning.
     print(
-        f"Validation Accuracy: {'{:.3}'.format(mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(mean(scores['train_score']))}")
+        f"Validation Accuracy: {'{:.3}'.format(np.mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_score']))}")
 
     return cv
 
@@ -599,7 +598,7 @@ def logistic_regression_model(x_train, y_train):
     #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
     #               }
     # specific tuning after the big tuning
-    param_grid = {'C': [0.8, 1, 1.2, 1.5 ,2,4],
+    param_grid = {'C': [0.8, 1, 1.2, 1.5 ,1.8,2,2.2,2.5,3],
                   'penalty': ['l1','l2'],
                   'solver': ['liblinear','saga']
                   }
@@ -649,4 +648,4 @@ if __name__ == '__main__':
 
     logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
-    rf_model(X_train, Y_train)
+    # rf_model(X_train, Y_train)
