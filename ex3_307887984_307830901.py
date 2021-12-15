@@ -34,15 +34,15 @@ from tabulate import tabulate
 # --------------------------------------- Data Understanding & Pre Processing ----------------------------------------#
 ########################################################################################################################
 
-def load_best_model():
+def load_best_model():  # todo
     pass
 
 
-def train_best_model():
+def train_best_model():  # todo
     pass
 
 
-def predict(m, fn):
+def predict(m, fn):  # todo
     pass
 
 
@@ -470,7 +470,7 @@ def feature_correlation(df):
     nominal.associations(temp_df, nominal_columns='all')
 
 
-def feature_selection(df, test_flag = False):
+def feature_selection(df, test_flag=False):
     """
     This function get df, drop the features that we understand that are not relevant or good enough for us and return
     final df for train and test.
@@ -582,10 +582,10 @@ def param_tuning(clf, x_train, y_train, params_grid, cv):
 
 def param_random_tuning(clf, x_train, y_train, params_grid, cv, n_iter):
     random_search = RandomizedSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', n_iter=n_iter, cv=cv,
-                                     verbose=3, return_train_score=True)
+                                       verbose=3, return_train_score=True)
     random_search.fit(x_train, y_train)
-    Results = pd.DataFrame(grid_search.cv_results_)
-    print('The best parameters are:', grid_search.best_params_)
+    Results = pd.DataFrame(random_search.cv_results_)
+    print('The best parameters are:', random_search.best_params_)
     results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[
         ['params', 'mean_test_score', 'mean_train_score']]
     headers_val = ["Number", "Parameters", "Validation score", 'Train score']
@@ -613,9 +613,9 @@ def logistic_regression_model(x_train, y_train):
     #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
     #               }
     # specific tuning after the big tuning
-    param_grid = {'C': [0.8, 1, 1.2, 1.5 ,1.8,2,2.2,2.5,3],
-                  'penalty': ['l1','l2'],
-                  'solver': ['liblinear','saga']
+    param_grid = {'C': [0.8, 1, 1.2, 1.5, 1.8, 2, 2.2, 2.5, 3],
+                  'penalty': ['l1', 'l2'],
+                  'solver': ['liblinear', 'saga']
                   }
 
     param_tuning(logistic_regression_clf, x_train, y_train, param_grid, cv)
