@@ -2,6 +2,7 @@ import csv
 import nltk
 import numpy as np
 import pandas as pd
+from dython import nominal
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
     GridSearchCV, RandomizedSearchCV
@@ -19,6 +20,7 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
 import calendar
+import torch
 
 # put in comments (imports for data understanding and hyper parameters tuning
 # from dython import nominal
