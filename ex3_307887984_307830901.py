@@ -19,7 +19,6 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import math
 import calendar
-import torch
 
 # put in comments (imports for data understanding and hyper parameters tuning
 from dython import nominal
@@ -481,39 +480,40 @@ def feature_selection(df, test_flag = False):
     """
     # Prepare data
     final_df = copy.deepcopy(df)
-    normalize_features(final_df, ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
+    normalize_features(final_df,
+                       ['hashtags_count', 'tweet_length', 'tags_count'])  # normalized the features to be between [0,1].
     final_df = make_categorized_from_hr_publish(final_df)  # make categories from hr_publish_time feature
-    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],drop_first=True)  # get dummies for categorical feature
+    final_df = pd.get_dummies(final_df, columns=['hr_publish_time'],
+                              drop_first=True)  # get dummies for categorical feature
 
     # Features selection
     if not test_flag:
-        final_df = final_df.drop('id',axis=1)
-        final_df = final_df.drop('user',axis=1)
-        final_df = final_df.drop('tweet',axis=1)
-        final_df = final_df.drop('time',axis=1)
-        final_df = final_df.drop('device',axis=1)
-        final_df = final_df.drop('written_time',axis=1)
-        final_df = final_df.drop('ex_mark',axis=1)
-        final_df = final_df.drop('publish_day',axis=1)
-        final_df = final_df.drop('positive_score',axis=1)
-        final_df = final_df.drop('VBZ',axis=1)
-        final_df = final_df.drop('VBD',axis=1)
+        final_df = final_df.drop('id', axis=1)
+        final_df = final_df.drop('user', axis=1)
+        final_df = final_df.drop('tweet', axis=1)
+        final_df = final_df.drop('time', axis=1)
+        final_df = final_df.drop('device', axis=1)
+        final_df = final_df.drop('written_time', axis=1)
+        final_df = final_df.drop('ex_mark', axis=1)
+        final_df = final_df.drop('publish_day', axis=1)
+        final_df = final_df.drop('positive_score', axis=1)
+        final_df = final_df.drop('VBZ', axis=1)
+        final_df = final_df.drop('VBD', axis=1)
 
-
-        final_df.to_csv('train_df.csv',index=False)
+        final_df.to_csv('train_df.csv', index=False)
 
     else:
         final_df = final_df.drop('user', axis=1)
         final_df = final_df.drop('tweet', axis=1)
         final_df = final_df.drop('time', axis=1)
-        final_df = final_df.drop('written_time',axis=1)
-        final_df = final_df.drop('ex_mark',axis=1)
-        final_df = final_df.drop('publish_day',axis=1)
-        final_df = final_df.drop('positive_score',axis=1)
-        final_df = final_df.drop('VBZ',axis=1)
-        final_df = final_df.drop('VBD',axis=1)
+        final_df = final_df.drop('written_time', axis=1)
+        final_df = final_df.drop('ex_mark', axis=1)
+        final_df = final_df.drop('publish_day', axis=1)
+        final_df = final_df.drop('positive_score', axis=1)
+        final_df = final_df.drop('VBZ', axis=1)
+        final_df = final_df.drop('VBD', axis=1)
 
-        final_df.to_csv('test_df.csv',index=False)
+        final_df.to_csv('test_df.csv', index=False)
 
     return final_df
 
@@ -555,7 +555,8 @@ def read_and_split_data():
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv, return_train_score=True) # score for model without hyper parameters tuning.
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv,
+                            return_train_score=True)  # score for model without hyper parameters tuning.
     print(
         f"Validation Accuracy: {'{:.3}'.format(np.mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_score']))}")
 
@@ -579,6 +580,19 @@ def param_tuning(clf, x_train, y_train, params_grid, cv):
     pass
 
 
+def param_random_tuning(clf, x_train, y_train, params_grid, cv, n_iter):
+    random_search = RandomizedSearchCV(estimator=clf, param_grid=params_grid, scoring='accuracy', n_iter=n_iter, cv=cv,
+                                     verbose=3, return_train_score=True)
+    random_search.fit(x_train, y_train)
+    Results = pd.DataFrame(grid_search.cv_results_)
+    print('The best parameters are:', grid_search.best_params_)
+    results_grid_search1 = pd.DataFrame(Results).sort_values('rank_test_score')[
+        ['params', 'mean_test_score', 'mean_train_score']]
+    headers_val = ["Number", "Parameters", "Validation score", 'Train score']
+    print(tabulate(results_grid_search1.head(10), headers=headers_val, tablefmt="grid"))
+    pass
+
+
 def svm_model(x_train, y_train):
     print('SVM classifier')
     svm_clf = svm.SVC(random_state=42)  # basic model
@@ -590,9 +604,10 @@ def svm_model(x_train, y_train):
     print('SVM classifier -- Hyper Parameters Tuning')
     param_tuning(svm_clf, x_train, y_train, param_grid, cv)
 
+
 def logistic_regression_model(x_train, y_train):
     print('Logistic Regression classifier')
-    logistic_regression_clf = LogisticRegression(max_iter=1000 , random_state=42)
+    logistic_regression_clf = LogisticRegression(max_iter=1000, random_state=42)
     cv = kfold_validation(logistic_regression_clf, x_train, y_train)
     # param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
     #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
@@ -619,15 +634,17 @@ def rf_model(x_train, y_train):
     min_samples_split = [2, 5, 10]  # Minimum number of samples required to split a node
     min_samples_leaf = [1, 2, 4]  # Minimum number of samples required at each leaf node
     bootstrap = [True, False]  # Method of selecting samples for training each tree
+    param_grid = {'n_estimators': n_estimators,
+                  'criterion': ['gini', 'entropy'],
+                  'max_depth': max_depth,
+                  'min_samples_split': min_samples_split,
+                  'min_samples_leaf': min_samples_leaf,
+                  'max_features': max_features,
+                  'bootstrap': bootstrap}
+    print('Random Forest classifier -- Hyper Parameters random Tuning')
+    # param_random_tuning(rf_clf, x_train, y_train, param_grid, cv, 200)
 
-    # param_grid = {'n_estimators': n_estimators,
-    #               'criterion': ['gini', 'entropy'],
-    #               'max_depth': max_depth,
-    #               'min_samples_split': min_samples_split,
-    #               'min_samples_leaf': min_samples_leaf,
-    #               'max_features': max_features,
-    #               'bootstrap': bootstrap}
-    # print('Random Forest classifier -- Hyper Parameters Tuning')
+    # #____ Fine Tuning _____#
     max_depth = list(range(50, 70, 2))
     max_depth.append(None)
     param_grid = {'n_estimators': [636],
@@ -638,6 +655,7 @@ def rf_model(x_train, y_train):
                   'max_features': ["sqrt"],
                   'bootstrap': [False]}
 
+    print('Random Forest classifier -- Hyper Parameters Tuning')
     param_tuning(rf_clf, x_train, y_train, param_grid, cv)
 
 
