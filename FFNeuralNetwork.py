@@ -37,7 +37,18 @@ class ConvertDataset(Dataset):
 
 
 class NN(nn.Module):
+    """
+    Creates an instance of a Multi Layer Perceptron.
+    Inner methods: model fit, model evaluation.
+    """
+
     def __init__(self, input_size, hidden_size, num_classes):
+        """
+        Initiates the neural network model.
+        :param input_size (int): The input layer size (number of features / embedding vector length)
+        :param hidden_size (list): List on integers defining the hidden layers sizes (number of neurons in each layer)
+        :param num_classes (int): The number of classification classes
+        """
         super(NN, self).__init__()
         # Fully connected layers
         self.fc1 = nn.Linear(input_size, hidden_size[0])
@@ -50,6 +61,12 @@ class NN(nn.Module):
         self.batchnorm2 = nn.BatchNorm1d(hidden_size[1])
 
     def forward(self, inputs):
+        """
+        Defines the model's architecture.
+
+        :param inputs: (list) Input layer
+        :return: predictions
+        """
         x = self.relu(self.fc1(inputs))
         # x = self.batchnorm1(x)
         x = self.relu(self.fc2(x))
@@ -61,33 +78,46 @@ class NN(nn.Module):
         return out
 
     def fit(self, train_loader, criterion, optimizer, epochs, validation_loader=None, verbose=0):
-        history = {'accuracy': [0],
-                   'val_accuracy': [0],
-                   'loss': [1],
-                   'val_loss': [1]
+        """
+        Fits the model to a given train dataset.
+        :param train_loader: Instance of type torch.DataLoader of the train data (with labels)
+        :param criterion: The network criterion
+        :param optimizer: The network optimizer
+        :param epochs: Number of training epochs
+        :param validation_loader: Instance of type torch.DataLoader of the validation data (with labels)
+        :param verbose: Defauls=0. If verbose=1, the program will print information during training.
+        :return: history. a Dictionary containing the train and validation loss and accuracy during training.
+        """
+        history = {'accuracy': [],
+                   'val_accuracy': [],
+                   'loss': [],
+                   'val_loss': []
                    }
-        # training loop
-        self.train()
+        self.train()  # model.train() indicates the model this is model training
+
         # run through all epochs
         for epoch in range(1, epochs + 1):
             # initiate train, validation loss and accuracy for each epoch
             epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc = 0, 0, 0, 0
             # run through the batches
             for X_batch, y_batch in train_loader:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+                X_batch, y_batch = X_batch.to(device), y_batch.to(device)  # send to cpu/gpu
 
                 # forward
                 y_pred = self(X_batch)  # predict based on X
                 loss = criterion(y_pred, y_batch.unsqueeze(1))  # loss based on predicted vs ground truth
                 acc = self._binary_acc(y_pred, y_batch.unsqueeze(1))
 
-                optimizer.zero_grad()
+                optimizer.zero_grad()  # zero the optimizer
                 # backwards
                 loss.backward()
                 optimizer.step()
 
+                # sum loss and accuracy for every batch
                 epoch_loss += loss.item()
                 epoch_acc += acc.item()
+
+            # if trained with a validation set:
             if validation_loader:
                 for X_batch, y_batch in validation_loader:
                     X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -112,28 +142,44 @@ class NN(nn.Module):
         return history
 
     def _binary_acc(self, y_pred, y_test):
+        """
+        Returns accuracy for binary classification
+        :param y_pred: model predictions
+        :param y_test: Ground truth (list)
+        :return: float -> the accuracy
+        """
         y_pred_tag = torch.round(y_pred)
-
         correct_results_sum = (y_pred_tag == y_test).sum().float()
         acc = correct_results_sum / y_test.shape[0]
-        # acc = torch.round(acc * 100)
 
         return acc
 
     def evaluate(self, x_train, x_test, y_train, y_test):
+        """
+        Evaluate the model on a test set and returns the train and test accuracy.
+        :param x_train: np.array of train data
+        :param x_test: np.array of train labels
+        :param y_train: np.array of test data
+        :param y_test: np.array of test labels
+        :return:
+        """
         # evaluation
-        self.eval()
+        self.eval()  # model.eval() indicates the model this is model eval
         train_predicted = self(torch.tensor(x_train, dtype=torch.float32))
-        train_predicted = train_predicted
+        # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
         test_predicted = self(torch.tensor(x_test, dtype=torch.float32))
-        test_predicted = test_predicted
+        # test_predicted = test_predicted
         test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
 
         return train_acc, test_acc
 
     def plot_acc_loss(self, history_dict):
+        """
+        Plots the accuracy and loss over training
+        :param history_dict: model training history
+        """
         # accuracy plot
         plt.plot(history_dict['accuracy'])
         plt.plot(history_dict['val_accuracy'])
@@ -153,46 +199,64 @@ class NN(nn.Module):
 
 
 def kfold_tuning(X, y, params):
+    """
+    Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
+    :param X: Train samples (DataFrame)
+    :param y: Train labels (DataFrame)
+    :param params: Dictionary of parameters.
+    :return: Results data frame
+    """
     skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+
+    # initialize results lists
     tuning_params = []
     tuning_train_acc = []
     tuning_val_acc = []
 
+    # counts number of tuning options
     options = 1
     for p in params:
         options = options * len(params[p])
     print(f'{options} Options -> {10 * options} iterations')
 
+    # loop through all possible combinations
     param_values = [v for v in params.values()]
-    i = 1
+    i = 1   # index of current iteration
     for i_s, h_s, e, b_s, lr in product(*param_values):
         print(
             f'{i}/{options} Tuning parameters-> input_size:{i_s} | hidden_size:{h_s} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr}'
         )
         i += 1
+
+        # initiate the neural network
         nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=1).to(device)
+        # initiates cross-validation results
         cv_train_acc = []
         cv_val_acc = []
+        # loop through the folds
         for train_index, test_index in skf.split(X, y):
             x_train, x_val = X.iloc[train_index], X.iloc[test_index]
             y_train, y_val = y.iloc[train_index], y.iloc[test_index]
             train_set, val_set = prepare_datasets(x_train, y_train, x_val, b_s)
 
+            # define model criterion and optimizer
             criterion = nn.BCELoss()
             optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
-
+            # fit model
             nn_clf.fit(train_loader=train_set,
                        criterion=criterion,
                        optimizer=optimizer,
                        epochs=e)
-
+            # evaluate on the validation
             acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
                                   y_val.to_numpy())
+            # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
         print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
         iter_params = {'input_size': i_s, 'hidden_size': h_s, 'epochs': e,
                        'batch_size': b_s, 'learning_rate': lr}
+        # append results of the iteration
         tuning_params.append(iter_params)
         tuning_val_acc.append(np.mean(cv_val_acc))
         tuning_train_acc.append(np.mean(cv_train_acc))
@@ -202,11 +266,21 @@ def kfold_tuning(X, y, params):
 
 
 def prepare_datasets(x_train, y_train, x_validation, batch_size):
+    """
+    Converts DataFrames to DataLoaders
+    :param x_train: train dataframe
+    :param y_train: train labels dataframe
+    :param x_validation: test/validation dataframe
+    :param batch_size: Batch size (int)
+    :return: train and test/validation DataLoaders
+    """
+
+    # convert dataframe to numpy arrays
     x_train = x_train.to_numpy()
     x_validation = x_validation.to_numpy()
     y_train = y_train.to_numpy()
 
-    #  Convert datasets
+    #  Convert to torch Datasets
     train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
                                    y=torch.FloatTensor(y_train),
                                    train=True)
@@ -221,10 +295,21 @@ def prepare_datasets(x_train, y_train, x_validation, batch_size):
 
 
 def ann_tuning(x_train, y_train, params_grid):
+    """
+    Preforms parameters tuning on the ann
+    :param x_train: train data frame
+    :param y_train: train labels data frame
+    :param params_grid: tuning parameters (dictionary)
+    :return: Best model
+    """
     results = kfold_tuning(X=x_train, y=y_train, params=params_grid)
+    # convert dictionary to DataFrame
     results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
+    # print table
     headers = ['Parameters', 'Validation score', 'Train score']
     print(tabulate(results.head(10), headers=headers, tablefmt='grid'))
+
+    return results[0]
 
 
 # Load Datasets
