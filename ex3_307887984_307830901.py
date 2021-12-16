@@ -550,7 +550,7 @@ def read_and_split_data():
     train_df = pd.read_csv('train_df.csv')
     X_test = pd.read_csv('test_df.csv')
     X_train = train_df.drop('label', axis=1)
-    Y_train = train_df['label']
+    Y_train = train_df[['label']]   # todo : I changes [] to [[]] it will fuck up normal models
 
     return X_train, Y_train, X_test
 
