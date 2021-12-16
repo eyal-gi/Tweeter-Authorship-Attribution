@@ -53,7 +53,9 @@ class NN(nn.Module):
         # Fully connected layers
         self.fc1 = nn.Linear(input_size, hidden_size[0])
         self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc_out = nn.Linear(hidden_size[1], num_classes)
+        self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
+        self.fc4 = nn.Linear(hidden_size[2], hidden_size[3])
+        self.fc_out = nn.Linear(hidden_size[3], num_classes)
         # Activation, dropout, batch-normalization layers
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=0.3)
@@ -315,10 +317,20 @@ def ann_tuning(x_train, y_train, params_grid):
 # Load Datasets
 X_train, Y_train, X_test = ex3.read_and_split_data()
 
-params_grid = {'INPUT_SIZE': [X_train.shape[1]],
+params_grid_3layers = {'INPUT_SIZE': [X_train.shape[1]],
+               'HIDDEN_SIZE': [[32, 32, 32, 32], [64, 64, 64, 64], [128, 128, 128, 128], [128, 128, 64, 64],
+                               [128, 64, 128, 64],
+                               [128, 64, 32, 16], [64, 64, 64, 32], [16, 32, 64, 128], [32, 32, 64, 64],
+                               [64, 64, 128, 128]],
+               'EPOCHS': [8, 16, 32, 64],
+               'BATCH_SIZE': [16, 32, 64, 128],
+               'LR': [0.001, 0.01]
+               }
+
+params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [16, 8], [32, 16], [64, 32], [128, 64]],
                'EPOCHS': [4, 8, 16, 32],
                'BATCH_SIZE': [16, 32, 64, 128],
                'LR': [0.001, 0.01, 0.1]
                }
-ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid)
+ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_3layers)
