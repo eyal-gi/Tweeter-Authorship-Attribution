@@ -2,7 +2,6 @@ import csv
 import nltk
 import numpy as np
 import pandas as pd
-from dython import nominal
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
     GridSearchCV, RandomizedSearchCV
@@ -550,7 +549,7 @@ def read_and_split_data():
     train_df = pd.read_csv('train_df.csv')
     X_test = pd.read_csv('test_df.csv')
     X_train = train_df.drop('label', axis=1)
-    Y_train = train_df[['label']]   # todo : I changes [] to [[]] it will fuck up normal models
+    Y_train = train_df['label']
 
     return X_train, Y_train, X_test
 
