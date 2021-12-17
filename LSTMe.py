@@ -507,7 +507,6 @@ def make_embedding(clean_data):
 
 
 
-
 ####### read and make data to preprocessing #######
 # TODO make everything for the test too!
 
