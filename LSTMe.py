@@ -5,9 +5,11 @@ import torch
 import torchtext
 from torchtext.legacy.data import Field, LabelField, BucketIterator
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 import spacy
 import torch.optim as optim
+from tabulate import tabulate
+from itertools import product
 
 SEED = 2019
 torch.manual_seed(SEED)
@@ -214,6 +216,17 @@ class LSTM(nn.Module):
 
         return train_acc, test_acc
 
+params = {'BATCH_SIZE': [],
+          'VOCAB_SIZE': [],
+          'EMBEDDING_DIM': [],
+          'HIDDEN_NODES': [],
+          'OUTPUT_NODES': [],
+          'lAYERS_NUM': [],
+          'BIDIRECTIONAL': [],
+          'DROPOUT': [],
+          'LR': [],
+          'EPOCHS': []
+          }
 
 def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes,
          num_layers, directional, dropout, learning_rate, epochs):
@@ -242,10 +255,56 @@ def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_h
 
     # push to cuda if available
     model, criterion = model.to(device), criterion.to(device)
-    model.fit(train_iterator=train_iterator, val_iterator=valid_iterator, optimizer=optimizer, criterion=criterion,
-              epochs=epochs, verbose=1)
+    history = model.fit(train_iterator=train_iterator, val_iterator=valid_iterator, optimizer=optimizer,
+                        criterion=criterion,
+                        epochs=epochs, verbose=1)
 
-    return model
+    return model, history
 
-def hyper_tuning(X, y, params):
-    pass
+
+def kfold_tuning(X, y, params):
+    """
+    Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
+    :param X: Train samples (DataFrame)
+    :param y: Train labels (DataFrame)
+    :param params: Dictionary of parameters.
+    :return: Results data frame
+    """
+    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+
+    # initialize results lists
+    tuning_params = []
+    tuning_train_acc = []
+    tuning_val_acc = []
+
+    # counts number of tuning options
+    options = 1
+    for p in params:
+        options = options * len(params[p])
+    print(f'{options} Options -> {10 * options} iterations')
+
+    # loop through all possible combinations
+    param_values = [v for v in params.values()]
+    i = 1  # index of current iteration
+    for i_s, h_s, e, b_s, lr in product(*param_values):
+        print(
+            f'{i}/{options} Tuning parameters-> input_size:{i_s} | hidden_size:{h_s} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr}'
+        )
+        i += 1
+
+def hyper_tuning(x_train, y_train, params_grid):
+    """
+    Preforms parameters tuning on the ann
+    :param x_train: train data frame
+    :param y_train: train labels data frame
+    :param params_grid: tuning parameters (dictionary)
+    :return: Best model
+    """
+    results = kfold_tuning(X=x_train, y=y_train, params=params_grid)
+    # convert dictionary to DataFrame
+    results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
+    # print table
+    headers = ['Parameters', 'Validation score', 'Train score']
+    print(tabulate(results.head(10), headers=headers, tablefmt='grid'))
+
+    return results.head(1)

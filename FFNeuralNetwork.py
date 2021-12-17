@@ -144,7 +144,8 @@ class NN(nn.Module):
                     print(
                         f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} - val_loss: {val_epoch_loss / len(validation_loader):.5f} - val_accuracy: {val_epoch_acc / len(validation_loader):.4f}')
                 else:
-                    print(f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f}')
+                    print(
+                        f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f}')
         return history
 
     def _binary_acc(self, y_pred, y_test):
@@ -204,26 +205,41 @@ class NN(nn.Module):
         plt.show()
 
 
-def ann(X, y, input_size, hidden_size, batch_size, lr, epochs):
+def ann(X, y, X_val, y_val, input_size, hidden_size, batch_size, lr, epochs):
+    """
+    construct a NeuralNetwork model.
+
+    :param X: train dataframe
+    :param y: train labels dataframe
+    :param input_size: input layer size
+    :param hidden_size: hidden layers size list
+    :param batch_size: training batches size
+    :param lr: solver's learning rate
+    :param epochs: number of training epochs
+    :return: ANN model
+    """
     # Convert data sets
-    train_set, _ = prepare_datasets(X, y, X, batch_size)
+    train_set, valid_set = prepare_datasets(X, y, X_val, y_val, batch_size)
     # define model, model criterion and optimizer
     nn_clf = NN(input_size=input_size, hidden_size=hidden_size, num_classes=1).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
-    nn_clf.fit(train_loader=train_set,
-               criterion=criterion,
-               optimizer=optimizer,
-               epochs=epochs, verbose=0)
+    history = nn_clf.fit(train_loader=train_set,
+                         validation_loader=valid_set,
+                         criterion=criterion,
+                         optimizer=optimizer,
+                         epochs=epochs, verbose=1)
 
-    return nn_clf
+    return nn_clf, history
 
-def prepare_datasets(x_train, y_train, x_validation, batch_size):
+
+def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
     """
     Converts DataFrames to DataLoaders
     :param x_train: train dataframe
     :param y_train: train labels dataframe
     :param x_validation: test/validation dataframe
+    :param y_validation: validation labels dataframe
     :param batch_size: Batch size (int)
     :return: train and test/validation DataLoaders
     """
@@ -232,17 +248,19 @@ def prepare_datasets(x_train, y_train, x_validation, batch_size):
     x_train = x_train.to_numpy()
     x_validation = x_validation.to_numpy()
     y_train = y_train.to_numpy()
+    y_validation = y_validation.to_numpy()
 
     #  Convert to torch Datasets
     train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
                                    y=torch.FloatTensor(y_train),
                                    train=True)
     validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
-                                        train=False)
+                                        y=torch.FloatTensor(y_validation),
+                                        train=True)
 
     # Create DataLoaders
     train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-    validation_loader = DataLoader(dataset=validation_dataset, batch_size=1, shuffle=True)
+    validation_loader = DataLoader(dataset=validation_dataset, batch_size=batch_size, shuffle=True)
 
     return train_loader, validation_loader
 
@@ -270,7 +288,7 @@ def kfold_tuning(X, y, params):
 
     # loop through all possible combinations
     param_values = [v for v in params.values()]
-    i = 1   # index of current iteration
+    i = 1  # index of current iteration
     for i_s, h_s, e, b_s, lr in product(*param_values):
         print(
             f'{i}/{options} Tuning parameters-> input_size:{i_s} | hidden_size:{h_s} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr}'
@@ -286,13 +304,15 @@ def kfold_tuning(X, y, params):
             y_train, y_val = y.iloc[train_index], y.iloc[test_index]
 
             # initiate the neural network
-            nn_clf = ann(X=x_train, y=y_train, input_size=i_s, hidden_size=h_s, batch_size=b_s, lr=lr, epochs=e)
+            nn_clf, history = ann(X=x_train, y=y_train, X_val=x_val, y_val=y_val, input_size=i_s, hidden_size=h_s,
+                                  batch_size=b_s, lr=lr, epochs=e)
             # evaluate on the validation
             acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
                                   y_val.to_numpy())
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
+            nn_clf.plot_acc_loss(history)
         print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
         iter_params = {'input_size': i_s, 'hidden_size': h_s, 'epochs': e,
                        'batch_size': b_s, 'learning_rate': lr}
@@ -327,40 +347,46 @@ def ann_tuning(x_train, y_train, params_grid):
 X_train, Y_train, X_test = ex3.read_and_split_data()
 
 params_grid_3layers = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[32, 32, 32, 32], [64, 64, 64, 64], [128, 128, 128, 128], [128, 128, 64, 64],
-                               [128, 64, 128, 64],
-                               [128, 64, 32, 16], [64, 64, 64, 32], [16, 32, 64, 128], [32, 32, 64, 64],
-                               [64, 64, 128, 128]],
-               'EPOCHS': [8, 16, 32, 64],
-               'BATCH_SIZE': [16, 32, 64, 128],
-               'LR': [0.001, 0.01]
-               }
+                       'HIDDEN_SIZE': [[32, 32, 32, 32], [64, 64, 64, 64], [128, 128, 128, 128], [128, 128, 64, 64],
+                                       [128, 64, 128, 64],
+                                       [128, 64, 32, 16], [64, 64, 64, 32], [16, 32, 64, 128], [32, 32, 64, 64],
+                                       [64, 64, 128, 128]],
+                       'EPOCHS': [8, 16, 32, 64],
+                       'BATCH_SIZE': [16, 32, 64, 128],
+                       'LR': [0.001, 0.01]
+                       }
 
 params_grid_3layers = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[128, 128, 128, 128], [256, 256, 256, 256]],
-               'EPOCHS': [64, 128, 256],
-               'BATCH_SIZE': [64],
-               'LR': [0.001]
-               }
+                       'HIDDEN_SIZE': [[128, 128, 128, 128], [256, 256, 256, 256]],
+                       'EPOCHS': [64, 128, 256],
+                       'BATCH_SIZE': [64],
+                       'LR': [0.001]
+                       }
 
 params_grid_4layers = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[128, 128, 128, 128, 128], [256, 256, 256, 256, 256]],
-               'EPOCHS': [64, 128, 256],
+                       'HIDDEN_SIZE': [[128, 128, 128, 128, 128], [256, 256, 256, 256, 256]],
+                       'EPOCHS': [64, 128, 256],
+                       'BATCH_SIZE': [64],
+                       'LR': [0.001]
+                       }
+params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
+                      'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [16, 8], [32, 16], [64, 32], [128, 64]],
+                      'EPOCHS': [4, 8, 16, 32, 64],
+                      'BATCH_SIZE': [16, 32, 64, 128],
+                      'LR': [0.001, 0.01]
+                      }
+
+test_params = {'INPUT_SIZE': [X_train.shape[1]],
+               'HIDDEN_SIZE': [[128, 128]],
+               'EPOCHS': [100],
                'BATCH_SIZE': [64],
                'LR': [0.001]
                }
-params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [16, 8], [32, 16], [64, 32], [128, 64]],
-               'EPOCHS': [4, 8, 16, 32, 64],
-               'BATCH_SIZE': [16, 32, 64, 128],
-               'LR': [0.001, 0.01]
-               }
 
+# best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=test_params)
 
-best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_1layer)
-print(best_model)
-
-
-
-
-
+X, x, Y, y = train_test_split(X_train, Y_train, train_size=0.8, random_state=42, stratify=Y_train)
+model, history = ann(X=X, y=Y, X_val=x, y_val=y, input_size=15, hidden_size=(128, 128), batch_size=64, lr=0.001,
+                     epochs=100)
+print(history)
+model.plot_acc_loss(history)
