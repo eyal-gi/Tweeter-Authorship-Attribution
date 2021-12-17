@@ -241,17 +241,6 @@ class LSTM(nn.Module):
         return train_acc, test_acc
 
 
-params = {'BATCH_SIZE': [],
-          'VOCAB_SIZE': [],
-          'EMBEDDING_DIM': [],
-          'HIDDEN_NODES': [],
-          'OUTPUT_NODES': [],
-          'lAYERS_NUM': [],
-          'BIDIRECTIONAL': [],
-          'DROPOUT': [],
-          'LR': [],
-          'EPOCHS': []
-          }
 
 
 def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes,
@@ -288,7 +277,7 @@ def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_h
     return model, history
 
 
-def kfold_tuning(X, y, params):
+def kfold_tuning(X, y, params, emb):
     """
     Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
     :param X: Train samples (DataFrame)
@@ -319,7 +308,7 @@ def kfold_tuning(X, y, params):
         i += 1
 
 
-def hyper_tuning(x_train, y_train, params_grid):
+def lstm_tuning(x_train, y_train, params_grid, embedding_vector):
     """
     Preforms parameters tuning on the ann
     :param x_train: train data frame
@@ -327,7 +316,7 @@ def hyper_tuning(x_train, y_train, params_grid):
     :param params_grid: tuning parameters (dictionary)
     :return: Best model
     """
-    results = kfold_tuning(X=x_train, y=y_train, params=params_grid)
+    results = kfold_tuning(X=x_train, y=y_train, params=params_grid, emb=embedding_vector)
     # convert dictionary to DataFrame
     results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
     # print table
@@ -423,10 +412,11 @@ def make_embedding(clean_data):
     data = list(map(TEXT.preprocess, clean_data))
     data = TEXT.pad(data)
     TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
+    vocab_size = len(TEXT.vocab)
     data_for_embedding = TEXT.numericalize(data)
     embedding_vectors = TEXT.vocab.vectors
 
-    return data_for_embedding , embedding_vectors
+    return data_for_embedding , embedding_vectors , vocab_size
 
 
 
@@ -439,4 +429,20 @@ X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding
 X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
 
-data_for_embedding , embedding_vectors = make_embedding(X_emb_clean_train)
+data_for_lstm , embedding_vectors , vocab_size= make_embedding(X_emb_clean_train)
+
+params = {'BATCH_SIZE': [32],
+          'VOCAB_SIZE': [vocab_size],
+          'EMBEDDING_DIM': [100],
+          'HIDDEN_NODES': [32],
+          'OUTPUT_NODES': [1],
+          'lAYERS_NUM': [1],
+          'BIDIRECTIONAL': [False],
+          'DROPOUT': [0.2],
+          'LR': [0.01],
+          'EPOCHS': [8]
+          }
+
+
+lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
+
