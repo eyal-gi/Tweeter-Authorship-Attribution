@@ -74,6 +74,8 @@ class NN(nn.Module):
         x = self.relu(self.fc2(x))
         # x = self.batchnorm2(x)
         # x = self.dropout(x)
+        x = self.relu(self.fc3(x))
+        x = self.relu(self.fc4(x))
         x = self.fc_out(x)
         out = torch.sigmoid(x)
 
@@ -311,7 +313,7 @@ def ann_tuning(x_train, y_train, params_grid):
     headers = ['Parameters', 'Validation score', 'Train score']
     print(tabulate(results.head(10), headers=headers, tablefmt='grid'))
 
-    return results[0]
+    return results.head(1)
 
 
 # Load Datasets
@@ -333,4 +335,6 @@ params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                'BATCH_SIZE': [16, 32, 64, 128],
                'LR': [0.001, 0.01, 0.1]
                }
+
+
 ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_3layers)
