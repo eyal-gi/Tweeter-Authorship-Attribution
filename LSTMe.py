@@ -1,42 +1,27 @@
-from keras.initializers.initializers_v2 import Constant
-from nltk import TweetTokenizer
-import torch.nn as nn
 import ex3_307887984_307830901 as ex3
-import torch
-import torchtext
-from torchtext.legacy.data import Field, LabelField, BucketIterator , TabularDataset
-import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold
-import spacy
-import string
-import pickle
+from nltk import TweetTokenizer
 from nltk.corpus import stopwords
-from tabulate import tabulate
-from itertools import product
+from nltk.tokenize import word_tokenize
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F  # RelU, tanh
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
+from torch.nn.utils.rnn import pad_sequence
+from torchtext.legacy.data import Field, LabelField, BucketIterator, TabularDataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import confusion_matrix, classification_report
+import spacy
+import string
+import pickle
+from tabulate import tabulate
+from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import math
 import re
-import nltk
-from nltk.tokenize import word_tokenize
-
-from keras.preprocessing.text import Tokenizer
-
-from torch.nn.utils.rnn import pad_sequence
-
-from tensorflow.python import tf2
 
 # nltk.download('stopwords')
-
 
 
 # training_data = ex3.read_data('trump_train.tsv')
@@ -266,8 +251,6 @@ class LSTM(nn.Module):
         return train_acc, test_acc
 
 
-
-
 def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes,
          num_output_nodes, num_layers, directional, dropout, learning_rate, epochs, pretrained_embeddings):
     # # Load an iterator
@@ -459,8 +442,6 @@ def preprocess_tweets_for_embedding(x_emb_train):
 
         clean_tweets.append(clean_tweet)
 
-
-
     return clean_tweets
 
 
@@ -494,7 +475,6 @@ def make_embedding(clean_data):
     :return: embedding matrix of our tweets
     """
 
-
     TEXT = Field(sequential=True, batch_first=True, include_lengths=True, fix_length=24)
     data = list(map(TEXT.preprocess, clean_data))
     data = TEXT.pad(data)
@@ -503,8 +483,7 @@ def make_embedding(clean_data):
     data_for_embedding = TEXT.numericalize(data)
     embedding_vectors = TEXT.vocab.vectors
 
-    return data_for_embedding , embedding_vectors , vocab_size
-
+    return data_for_embedding, embedding_vectors, vocab_size
 
 
 ####### read and make data to preprocessing #######
@@ -515,7 +494,7 @@ X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding
 X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
 
-data_for_lstm , embedding_vectors , vocab_size= make_embedding(X_emb_clean_train)
+data_for_lstm, embedding_vectors, vocab_size = make_embedding(X_emb_clean_train)
 
 params = {'BATCH_SIZE': [32],
           'VOCAB_SIZE': [vocab_size],
@@ -529,6 +508,4 @@ params = {'BATCH_SIZE': [32],
           'EPOCHS': [8]
           }
 
-
 lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
-
