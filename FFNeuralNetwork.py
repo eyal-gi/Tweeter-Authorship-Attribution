@@ -105,6 +105,7 @@ class NN(nn.Module):
             epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc = 0, 0, 0, 0
             # run through the batches
             for X_batch, y_batch in train_loader:
+                optimizer.zero_grad()  # zero the optimizer
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)  # send to cpu/gpu
 
                 # forward
@@ -112,7 +113,6 @@ class NN(nn.Module):
                 loss = criterion(y_pred, y_batch.unsqueeze(1))  # loss based on predicted vs ground truth
                 acc = self._binary_acc(y_pred, y_batch.unsqueeze(1))
 
-                optimizer.zero_grad()  # zero the optimizer
                 # backwards
                 loss.backward()
                 optimizer.step()
@@ -141,7 +141,7 @@ class NN(nn.Module):
 
             if verbose == 1:
                 print(
-                    f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} - val_loss: {val_epoch_loss / len(validation_loader):.5f} - val_accuracy: {val_epoch_acc / len(validation_loader):.4f}')
+                    f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} ')
 
         return history
 
@@ -232,8 +232,7 @@ def kfold_tuning(X, y, params):
         )
         i += 1
 
-        # initiate the neural network
-        nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=1).to(device)
+
         # initiates cross-validation results
         cv_train_acc = []
         cv_val_acc = []
@@ -243,6 +242,8 @@ def kfold_tuning(X, y, params):
             y_train, y_val = y.iloc[train_index], y.iloc[test_index]
             train_set, val_set = prepare_datasets(x_train, y_train, x_val, b_s)
 
+            # initiate the neural network
+            nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=1).to(device)
             # define model criterion and optimizer
             criterion = nn.BCELoss()
             optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
@@ -329,6 +330,19 @@ params_grid_3layers = {'INPUT_SIZE': [X_train.shape[1]],
                'LR': [0.001, 0.01]
                }
 
+params_grid_3layers = {'INPUT_SIZE': [X_train.shape[1]],
+               'HIDDEN_SIZE': [[128, 128, 128, 128], [256, 256, 256, 256]],
+               'EPOCHS': [64, 128, 256],
+               'BATCH_SIZE': [64],
+               'LR': [0.001]
+               }
+
+params_grid_4layers = {'INPUT_SIZE': [X_train.shape[1]],
+               'HIDDEN_SIZE': [[128, 128, 128, 128, 128], [256, 256, 256, 256, 256]],
+               'EPOCHS': [64, 128, 256],
+               'BATCH_SIZE': [64],
+               'LR': [0.001]
+               }
 params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [16, 8], [32, 16], [64, 32], [128, 64]],
                'EPOCHS': [4, 8, 16, 32],
@@ -337,4 +351,34 @@ params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                }
 
 
-ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_3layers)
+# ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_4layers)
+
+def ann(X, y, input_size, hidden_size, batch_size, lr, epochs):
+    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+    # initiates cross-validation results
+    cv_train_acc = []
+    cv_val_acc = []
+    # loop through the folds
+    for train_index, test_index in skf.split(X, y):
+        x_train, x_val = X.iloc[train_index], X.iloc[test_index]
+        y_train, y_val = y.iloc[train_index], y.iloc[test_index]
+        train_set, _ = prepare_datasets(x_train, y_train, x_val, batch_size)
+
+        # define model criterion and optimizer
+        nn_clf = NN(input_size=input_size, hidden_size=hidden_size, num_classes=1).to(device)
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
+        # fit model
+        nn_clf.fit(train_loader=train_set,
+                   criterion=criterion,
+                   optimizer=optimizer,
+                   epochs=epochs, verbose=1)
+        # evaluate on the validation
+        acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
+                              y_val.to_numpy())
+        # append results of the fold
+        cv_train_acc.append(acc[0])
+        cv_val_acc.append(acc[1])
+    print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
+
+ann(X_train, Y_train, 15, [128,128,128,128], 64, 0.001, 8)
