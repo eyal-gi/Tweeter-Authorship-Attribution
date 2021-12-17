@@ -1,3 +1,6 @@
+import string
+import pickle
+from nltk.corpus import stopwords
 from tabulate import tabulate
 from itertools import product
 import torch
@@ -13,6 +16,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import math
+import re
+import nltk
+from nltk.tokenize import word_tokenize
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+nltk.download('stopwords')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
@@ -389,3 +398,5 @@ model, history = ann(X=X, y=Y, X_val=x, y_val=y, input_size=15, hidden_size=(128
                      epochs=100)
 print(history)
 model.plot_acc_loss(history)
+
+
