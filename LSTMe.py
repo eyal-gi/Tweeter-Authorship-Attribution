@@ -65,6 +65,24 @@ BIDIRECTION = True
 DROPOUT = 0.2
 
 
+class ConvertDataset(Dataset):
+    def __init__(self, x, y=None, train=False):
+        # data loading
+        self.train = train
+
+        self.x = x
+        if train: self.y = y
+
+    def __getitem__(self, index):
+        if self.train:
+            return self.x[index], self.y[index]
+        else:
+            return self.x[index]
+
+    def __len__(self):
+        return len(self.x)
+
+
 class LSTM(nn.Module):
 
     # define all the layers used in model
@@ -96,7 +114,7 @@ class LSTM(nn.Module):
         # embedded = [batch size, sent_len, emb dim]
 
         # packed sequence
-        # packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
 
         packed_output, (hidden, cell) = self.lstm(embedded)
         # hidden = [batch size, num layers * num directions,hid dim]
@@ -159,21 +177,21 @@ class LSTM(nn.Module):
         # initiate train loss and accuracy for each epoch
         epoch_loss, epoch_acc = 0, 0
 
-        for batch in iterator:
+        for x_batch, labels in iterator:
             # resets the gradients after every batch
             optimizer.zero_grad()
 
             # retrieve text and no. of words
-            text, text_lengths = batch.text
+            # text, text_lengths = batch.text
 
             # convert to 1D tensor
-            predictions = self(text, text_lengths).squeeze()
+            predictions = self(x_batch)
 
             # compute the loss
-            loss = criterion(predictions, batch.label)
+            loss = criterion(predictions, labels)
 
             # compute the binary accuracy
-            acc = self._binary_accuracy(predictions, batch.label)
+            acc = self._binary_accuracy(predictions, labels)
 
             # backpropagation the loss and compute the gradients
             loss.backward()
@@ -196,16 +214,17 @@ class LSTM(nn.Module):
 
         # deactivates autograd
         with torch.no_grad():
-            for batch in iterator:
+            for x_batch, labels in iterator:
                 # retrieve text and no. of words
-                text, text_lengths = batch.text
+                # text, text_lengths = batch.text
 
                 # convert to 1d tensor
-                predictions = self(text, text_lengths).squeeze()
+                # predictions = self(text, text_lengths).squeeze()
+                predictions = self(x_batch)
 
                 # compute loss and accuracy
-                loss = criterion(predictions, batch.label)
-                acc = self._binary_accuracy(predictions, batch.label)
+                loss = criterion(predictions, labels)
+                acc = self._binary_accuracy(predictions, labels)
 
                 # keep track of loss and accuracy
                 epoch_loss += loss.item()
@@ -214,12 +233,17 @@ class LSTM(nn.Module):
         # return (val_loss, val_acc)
         return epoch_loss / len(iterator), epoch_acc / len(iterator)
 
-    def _binary_accuracy(self, preds, y):
-        # round predictions to the closest integer
-        rounded_preds = torch.round(preds)
+    def _binary_acc(self, y_pred, y_test):
+        """
+        Returns accuracy for binary classification
+        :param y_pred: model predictions
+        :param y_test: Ground truth (list)
+        :return: float -> the accuracy
+        """
+        y_pred_tag = torch.round(y_pred)
+        correct_results_sum = (y_pred_tag == y_test).sum().float()
+        acc = correct_results_sum / y_test.shape[0]
 
-        correct = (rounded_preds == y).float()
-        acc = correct.sum() / len(correct)
         return acc
 
     def evaluate(self, x_train, x_test, y_train, y_test):
@@ -257,23 +281,17 @@ params = {'BATCH_SIZE': [],
           }
 
 
-def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes,
-         num_layers, directional, dropout, learning_rate, epochs, max_len):
-    # Load an iterator
-    train_iterator, valid_iterator = BucketIterator.splits(
-        (train_data, valid_data),
-        batch_size=batch_size,
-        sort_key=lambda x: len(x.text),
-        sort_within_batch=True,
-        device=device)
+def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes,
+         num_output_nodes, num_layers, directional, dropout, learning_rate, epochs, pretrained_embeddings):
+    # # Load an iterator
+    train_iterator, valid_iterator = prepare_datasets(train_data, y_train, valid_data, y_val, batch_size)
 
     # instantiate the model
     model = LSTM(size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes, num_layers,
                  bidirectional=directional, dropout=dropout)
-    model.summary()
+    # model.summary()
 
     # Initialize the pretrained embedding
-    pretrained_embeddings = TEXT.vocab.vectors # todo
     model.embedding.weight.data.copy_(pretrained_embeddings)
 
     # print(pretrained_embeddings.shape)
@@ -284,16 +302,52 @@ def lstm(train_data, valid_data, batch_size, size_of_vocab, embedding_dim, num_h
 
     # push to cuda if available
     model, criterion = model.to(device), criterion.to(device)
-    history = model.fit(train_iterator=train_iterator, val_iterator=valid_iterator, optimizer=optimizer,
+    history = model.fit(train_iterator=train_iterator,
+                        val_iterator=valid_iterator,
+                        optimizer=optimizer,
                         criterion=criterion,
-                        epochs=epochs, verbose=1)
+                        epochs=epochs,
+                        verbose=0)
 
     return model, history
 
 
-def kfold_tuning(X, y, params):
+def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
+    """
+    Converts DataFrames to DataLoaders
+    :param x_train: train dataframe
+    :param y_train: train labels dataframe
+    :param x_validation: test/validation dataframe
+    :param y_validation: validation labels dataframe
+    :param batch_size: Batch size (int)
+    :return: train and test/validation DataLoaders
+    """
+
+    # convert dataframe to numpy arrays
+    x_train = x_train.to_numpy()
+    x_validation = x_validation.to_numpy()
+    y_train = y_train.to_numpy()
+    y_validation = y_validation.to_numpy()
+
+    #  Convert to torch Datasets
+    train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
+                                   y=torch.FloatTensor(y_train),
+                                   train=True)
+    validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
+                                        y=torch.FloatTensor(y_validation),
+                                        train=True)
+
+    # Create DataLoaders
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+    validation_loader = DataLoader(dataset=validation_dataset, batch_size=batch_size, shuffle=True)
+
+    return train_loader, validation_loader
+
+
+def kfold_tuning(X, y, params, embeddings):
     """
     Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
+    :param embeddings:
     :param X: Train samples (DataFrame)
     :param y: Train labels (DataFrame)
     :param params: Dictionary of parameters.
@@ -315,11 +369,43 @@ def kfold_tuning(X, y, params):
     # loop through all possible combinations
     param_values = [v for v in params.values()]
     i = 1  # index of current iteration
-    for i_s, h_s, e, b_s, lr in product(*param_values):
+    for b_s, h_n, l_n, direction, dropout, lr, e in product(*param_values):
         print(
-            f'{i}/{options} Tuning parameters-> input_size:{i_s} | hidden_size:{h_s} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr}'
+            f'{i}/{options} Tuning parameters-> | hidden_size:{h_n} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr} | layers_num:{l_n} | dropout:{dropout} | bidirectional:{direction}'
         )
         i += 1
+
+        # initiates cross-validation results
+        cv_train_acc = []
+        cv_val_acc = []
+        # loop through the folds
+        for train_index, test_index in skf.split(X, y):
+            x_train, x_val = X.iloc[train_index], X.iloc[test_index]
+            y_train, y_val = y.iloc[train_index], y.iloc[test_index]
+
+            # initiate the neural network
+            lstm_clf, history = lstm(train_data=x_train, valid_data=x_val, train_y=y_train, val_y=y_val, batch_size=b_s,
+                                     epochs=e,
+                                     size_of_vocab=params['VOCAB_SIZE'], embedding_dim=params['EMBEDDING_DIM'],
+                                     num_hidden_nodes=h_n, num_output_nodes=1, num_layers=l_n, directional=direction,
+                                     dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
+            # evaluate on the validation
+            acc = lstm_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
+                                    y_val.to_numpy())
+            # append results of the fold
+            cv_train_acc.append(acc[0])
+            cv_val_acc.append(acc[1])
+        print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
+        iter_params = {'hidden_size': h_n, 'hidden_size': h_n, 'epochs': e,
+                       'batch_size': b_s, 'learning_rate': lr, 'layers_num': l_n, 'dropout': dropout,
+                       'bidirectional': direction}
+        # append results of the iteration
+        tuning_params.append(iter_params)
+        tuning_val_acc.append(np.mean(cv_val_acc))
+        tuning_train_acc.append(np.mean(cv_train_acc))
+
+    cv_results = {'params': tuning_params, 'mean_test_score': tuning_val_acc, 'mean_train_score': tuning_train_acc}
+    return cv_results
 
 
 def hyper_tuning(x_train, y_train, params_grid):
@@ -506,5 +592,3 @@ file = open('train_embedding.pkl', 'rb')
 emb_matrix = pickle.load(file)
 print(emb_matrix.shape)
 file.close()
-
-hyper_tuning(x_train=X)
