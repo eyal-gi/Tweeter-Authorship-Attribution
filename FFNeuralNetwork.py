@@ -140,9 +140,11 @@ class NN(nn.Module):
             history['loss'].append(epoch_loss / len(train_loader))
 
             if verbose == 1:
-                print(
-                    f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} ')
-
+                if validation_loader:
+                    print(
+                        f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} - val_loss: {val_epoch_loss / len(validation_loader):.5f} - val_accuracy: {val_epoch_acc / len(validation_loader):.4f}')
+                else:
+                    print(f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f}')
         return history
 
     def _binary_acc(self, y_pred, y_test):
@@ -240,7 +242,7 @@ def kfold_tuning(X, y, params):
         for train_index, test_index in skf.split(X, y):
             x_train, x_val = X.iloc[train_index], X.iloc[test_index]
             y_train, y_val = y.iloc[train_index], y.iloc[test_index]
-            train_set, val_set = prepare_datasets(x_train, y_train, x_val, b_s)
+            train_set, _ = prepare_datasets(x_train, y_train, x_val, b_s)
 
             # initiate the neural network
             nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=1).to(device)
