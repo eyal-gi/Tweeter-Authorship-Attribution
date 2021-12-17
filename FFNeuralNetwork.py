@@ -53,9 +53,9 @@ class NN(nn.Module):
         # Fully connected layers
         self.fc1 = nn.Linear(input_size, hidden_size[0])
         self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
-        self.fc4 = nn.Linear(hidden_size[2], hidden_size[3])
-        self.fc_out = nn.Linear(hidden_size[3], num_classes)
+        # self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
+        # self.fc4 = nn.Linear(hidden_size[2], hidden_size[3])
+        self.fc_out = nn.Linear(hidden_size[1], num_classes)
         # Activation, dropout, batch-normalization layers
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=0.3)
@@ -74,8 +74,8 @@ class NN(nn.Module):
         x = self.relu(self.fc2(x))
         # x = self.batchnorm2(x)
         # x = self.dropout(x)
-        x = self.relu(self.fc3(x))
-        x = self.relu(self.fc4(x))
+        # x = self.relu(self.fc3(x))
+        # x = self.relu(self.fc4(x))
         x = self.fc_out(x)
         out = torch.sigmoid(x)
 
@@ -204,6 +204,49 @@ class NN(nn.Module):
         plt.show()
 
 
+def ann(X, y, input_size, hidden_size, batch_size, lr, epochs):
+    # Convert data sets
+    train_set, _ = prepare_datasets(X, y, X, batch_size)
+    # define model, model criterion and optimizer
+    nn_clf = NN(input_size=input_size, hidden_size=hidden_size, num_classes=1).to(device)
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
+    nn_clf.fit(train_loader=train_set,
+               criterion=criterion,
+               optimizer=optimizer,
+               epochs=epochs, verbose=0)
+
+    return nn_clf
+
+def prepare_datasets(x_train, y_train, x_validation, batch_size):
+    """
+    Converts DataFrames to DataLoaders
+    :param x_train: train dataframe
+    :param y_train: train labels dataframe
+    :param x_validation: test/validation dataframe
+    :param batch_size: Batch size (int)
+    :return: train and test/validation DataLoaders
+    """
+
+    # convert dataframe to numpy arrays
+    x_train = x_train.to_numpy()
+    x_validation = x_validation.to_numpy()
+    y_train = y_train.to_numpy()
+
+    #  Convert to torch Datasets
+    train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
+                                   y=torch.FloatTensor(y_train),
+                                   train=True)
+    validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
+                                        train=False)
+
+    # Create DataLoaders
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+    validation_loader = DataLoader(dataset=validation_dataset, batch_size=1, shuffle=True)
+
+    return train_loader, validation_loader
+
+
 def kfold_tuning(X, y, params):
     """
     Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
@@ -234,7 +277,6 @@ def kfold_tuning(X, y, params):
         )
         i += 1
 
-
         # initiates cross-validation results
         cv_train_acc = []
         cv_val_acc = []
@@ -242,18 +284,9 @@ def kfold_tuning(X, y, params):
         for train_index, test_index in skf.split(X, y):
             x_train, x_val = X.iloc[train_index], X.iloc[test_index]
             y_train, y_val = y.iloc[train_index], y.iloc[test_index]
-            train_set, _ = prepare_datasets(x_train, y_train, x_val, b_s)
 
             # initiate the neural network
-            nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=1).to(device)
-            # define model criterion and optimizer
-            criterion = nn.BCELoss()
-            optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
-            # fit model
-            nn_clf.fit(train_loader=train_set,
-                       criterion=criterion,
-                       optimizer=optimizer,
-                       epochs=e)
+            nn_clf = ann(X=x_train, y=y_train, input_size=i_s, hidden_size=h_s, batch_size=b_s, lr=lr, epochs=e)
             # evaluate on the validation
             acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
                                   y_val.to_numpy())
@@ -270,35 +303,6 @@ def kfold_tuning(X, y, params):
 
     cv_results = {'params': tuning_params, 'mean_test_score': tuning_val_acc, 'mean_train_score': tuning_train_acc}
     return cv_results
-
-
-def prepare_datasets(x_train, y_train, x_validation, batch_size):
-    """
-    Converts DataFrames to DataLoaders
-    :param x_train: train dataframe
-    :param y_train: train labels dataframe
-    :param x_validation: test/validation dataframe
-    :param batch_size: Batch size (int)
-    :return: train and test/validation DataLoaders
-    """
-
-    # convert dataframe to numpy arrays
-    x_train = x_train.to_numpy()
-    x_validation = x_validation.to_numpy()
-    y_train = y_train.to_numpy()
-
-    #  Convert to torch Datasets
-    train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
-                                   y=torch.FloatTensor(y_train),
-                                   train=True)
-    validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
-                                        train=False)
-
-    # Create DataLoaders
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-    validation_loader = DataLoader(dataset=validation_dataset, batch_size=1, shuffle=True)
-
-    return train_loader, validation_loader
 
 
 def ann_tuning(x_train, y_train, params_grid):
@@ -347,40 +351,16 @@ params_grid_4layers = {'INPUT_SIZE': [X_train.shape[1]],
                }
 params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [16, 8], [32, 16], [64, 32], [128, 64]],
-               'EPOCHS': [4, 8, 16, 32],
+               'EPOCHS': [4, 8, 16, 32, 64],
                'BATCH_SIZE': [16, 32, 64, 128],
-               'LR': [0.001, 0.01, 0.1]
+               'LR': [0.001, 0.01]
                }
 
 
-# ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_4layers)
+best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=params_grid_1layer)
+print(best_model)
 
-def ann(X, y, input_size, hidden_size, batch_size, lr, epochs):
-    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    # initiates cross-validation results
-    cv_train_acc = []
-    cv_val_acc = []
-    # loop through the folds
-    for train_index, test_index in skf.split(X, y):
-        x_train, x_val = X.iloc[train_index], X.iloc[test_index]
-        y_train, y_val = y.iloc[train_index], y.iloc[test_index]
-        train_set, _ = prepare_datasets(x_train, y_train, x_val, batch_size)
 
-        # define model criterion and optimizer
-        nn_clf = NN(input_size=input_size, hidden_size=hidden_size, num_classes=1).to(device)
-        criterion = nn.BCELoss()
-        optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
-        # fit model
-        nn_clf.fit(train_loader=train_set,
-                   criterion=criterion,
-                   optimizer=optimizer,
-                   epochs=epochs, verbose=1)
-        # evaluate on the validation
-        acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
-                              y_val.to_numpy())
-        # append results of the fold
-        cv_train_acc.append(acc[0])
-        cv_val_acc.append(acc[1])
-    print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
 
-ann(X_train, Y_train, 15, [128,128,128,128], 64, 0.001, 8)
+
+
