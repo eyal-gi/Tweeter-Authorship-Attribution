@@ -1,27 +1,19 @@
-import string
-import pickle
-from nltk.corpus import stopwords
-from tabulate import tabulate
-from itertools import product
+import ex3_307887984_307830901 as ex3
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F  # RelU, tanh
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
-import ex3_307887984_307830901 as ex3
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from tabulate import tabulate
+from itertools import product
+import string
+import pickle
 import math
 import re
-import nltk
-from nltk.tokenize import word_tokenize
-from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
-nltk.download('stopwords')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
