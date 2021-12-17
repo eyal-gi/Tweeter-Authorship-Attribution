@@ -4,13 +4,10 @@ import torch.nn as nn
 import ex3_307887984_307830901 as ex3
 import torch
 import torchtext
-from torchtext.legacy.data import Field, LabelField, BucketIterator
+from torchtext.legacy.data import Field, LabelField, BucketIterator , TabularDataset
 import pandas as pd
 from sklearn.model_selection import train_test_split, StratifiedKFold
 import spacy
-import torch.optim as optim
-from tabulate import tabulate
-from itertools import product
 import string
 import pickle
 from nltk.corpus import stopwords
@@ -23,7 +20,6 @@ import torch.nn.functional as F  # RelU, tanh
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
-import ex3_307887984_307830901 as ex3
 from sklearn.model_selection import train_test_split, StratifiedKFold
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,19 +28,21 @@ import math
 import re
 import nltk
 from nltk.tokenize import word_tokenize
+
 from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
+
+from torch.nn.utils.rnn import pad_sequence
+
 from tensorflow.python import tf2
 
 # nltk.download('stopwords')
 
-# SEED = 2019
-# torch.manual_seed(SEED)
-#
+
+
 # training_data = ex3.read_data('trump_train.tsv')
 # training_data = training_data[['tweet', 'label']]
 #
-TEXT = Field(tokenize='moses', batch_first=True, include_lengths=True)
+# TEXT = Field(tokenize='moses', batch_first=True, include_lengths=True)
 # # LABEL = LabelField(dtype=torch.float, batch_first=True)
 #
 # fields = [('tweet', TEXT), ('label', LABEL)]
@@ -87,7 +85,7 @@ class LSTM(nn.Module):
 
     # define all the layers used in model
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, n_layers,
-                 bidirectional, dropout, data_pickle):
+                 bidirectional, dropout):
         # Constructor
         super().__init__()
 
@@ -116,7 +114,7 @@ class LSTM(nn.Module):
         # packed sequence
         packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
 
-        packed_output, (hidden, cell) = self.lstm(embedded)
+        packed_output, (hidden, cell) = self.lstm(packed_embedded)
         # hidden = [batch size, num layers * num directions,hid dim]
         # cell = [batch size, num layers * num directions,hid dim]
 
@@ -268,17 +266,6 @@ class LSTM(nn.Module):
         return train_acc, test_acc
 
 
-params = {'BATCH_SIZE': [],
-          'VOCAB_SIZE': [],
-          'EMBEDDING_DIM': [],
-          'HIDDEN_NODES': [],
-          'OUTPUT_NODES': [],
-          'lAYERS_NUM': [],
-          'BIDIRECTIONAL': [],
-          'DROPOUT': [],
-          'LR': [],
-          'EPOCHS': []
-          }
 
 
 def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes,
@@ -408,7 +395,7 @@ def kfold_tuning(X, y, params, embeddings):
     return cv_results
 
 
-def hyper_tuning(x_train, y_train, params_grid):
+def lstm_tuning(x_train, y_train, params_grid, embedding_vector):
     """
     Preforms parameters tuning on the ann
     :param x_train: train data frame
@@ -416,7 +403,7 @@ def hyper_tuning(x_train, y_train, params_grid):
     :param params_grid: tuning parameters (dictionary)
     :return: Best model
     """
-    results = kfold_tuning(X=x_train, y=y_train, params=params_grid)
+    results = kfold_tuning(X=x_train, y=y_train, params=params_grid, embeddings=embedding_vector)
     # convert dictionary to DataFrame
     results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
     # print table
@@ -463,17 +450,18 @@ def preprocess_tweets_for_embedding(x_emb_train):
         tweet_lower_case = tweet.lower()  # tweet to lowercase
         remove_stock_market_symbols = re.sub(r'\$\w*', '', tweet_lower_case)  # remove stock-market
         remove_hashtags = re.sub(r'#', '', remove_stock_market_symbols)  # remove hashtag
-        remove_url = re.sub(r'https?:\/\/.[\r\n]', '', remove_hashtags)  # remove urls
+        remove_url = re.sub(r'https?:\/\/.*[\r\n]*', '', remove_hashtags)  # remove urls
         remove_sw = remove_stop_words(remove_url)  # remove stopwords
         remove_punc = remove_punctuation(remove_sw)  # remove punctuation
-        clean_tweet = remove_punc
+        tweet_tokenize = TweetTokenizer(strip_handles=True, reduce_len=True)
+        tweet_tokens_list = tweet_tokenize.tokenize(remove_punc)
+        clean_tweet = tweet_tokens_list
 
         clean_tweets.append(clean_tweet)
 
-    clean_data = pd.DataFrame()
-    clean_data['tweet'] = clean_tweets
 
-    return clean_data
+
+    return clean_tweets
 
 
 def remove_stop_words(tweet):
@@ -499,76 +487,26 @@ def remove_punctuation(tweet):
 
 ########################### create the embeddings #################################
 
-def create_corpus_tk(df):
-    """
-    This function get the train data frame and make a corpus from it.
-    :param df: Train dataframe
-    :return: corpus(list) and the length of it.
-    """
-    corpus = []
-    for tweet in df['tweet']:
-        words = [word.lower() for word in word_tokenize(tweet)]
-        corpus.append(words)
-    max_len = max([len(x) for x in corpus])
-    return corpus, max_len
 
-
-def tokenize_and_padding(df, corpus_length, max_tweet_length):
-    """
-    The function make tokenizer and padding all tweets to be in the same length.
-    :param df: Train dataframe
-    :param corpus_length: Length of corpus
-    :param max_tweet_length: The length of the the longest tweet
-    :return: all the tweets sequences with padding and word_index list
-    """
-    train_data = df['tweet']
-    tokenizer = Tokenizer(num_words=corpus_length)
-    tokenizer.fit_on_texts(train_data)
-    train_sequences = tokenizer.texts_to_sequences(train_data)
-    train_padded = pad_sequences(train_sequences, maxlen=max_tweet_length, truncating='post', padding='post')
-    word_index = tokenizer.word_index
-
-    return train_padded, word_index
-
-
-def make_embedding(word_idx):
+def make_embedding(clean_data):
     """
     This function make embedding by using glove.twitter.27B.100d
     :return: embedding matrix of our tweets
     """
-    ####### Make glove twitter embedding ######
-    embedding_dict = {}
-    with open('glove.twitter.27B.100d.txt', 'r', encoding='utf-8') as f:
-        for line in f:
-            values = line.split()
-            word = values[0]
-            vectors = np.asarray(values[1:], 'float32')
-            embedding_dict[word] = vectors
-    f.close()
-    ###### Make pickle of embedding_dict (glove.twitter embedding) ####
-    # path_glove = open('glove_twitter_embedding.pkl', 'wb')
-    # pickle.dump(embedding_dict , path_glove)
-    # path_glove.close
-
-    ####### Make  embedding for out data ######
-    num_words = len(word_idx)
-    embedding_matrix = np.zeros((num_words, 100))
-
-    for word, i in words_index.items():
-        if i < num_words:
-            emb_vec = embedding_dict.get(word)
-            if emb_vec is not None:
-                embedding_matrix[i] = emb_vec
-    ###### Make pickle of embedding_dict (glove.twitter embedding) ####
-    # path_train = open('train_embedding.pkl', 'wb')
-    # pickle.dump(embedding_matrix , path_train)
-    # path_train.close
-
-    return embedding_matrix
 
 
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', True)
+    TEXT = Field(sequential=True, batch_first=True, include_lengths=True, fix_length=24)
+    data = list(map(TEXT.preprocess, clean_data))
+    data = TEXT.pad(data)
+    TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
+    vocab_size = len(TEXT.vocab)
+    data_for_embedding = TEXT.numericalize(data)
+    embedding_vectors = TEXT.vocab.vectors
+
+    return data_for_embedding , embedding_vectors , vocab_size
+
+
+
 
 ####### read and make data to preprocessing #######
 # TODO make everything for the test too!
@@ -578,17 +516,20 @@ X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding
 X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
 
-corpus, max_tweet_len = create_corpus_tk(X_emb_clean_train)
+data_for_lstm , embedding_vectors , vocab_size= make_embedding(X_emb_clean_train)
 
-X_train_padded, words_index = tokenize_and_padding(X_emb_clean_train, len(corpus), max_tweet_len)
+params = {'BATCH_SIZE': [32],
+          'VOCAB_SIZE': [vocab_size],
+          'EMBEDDING_DIM': [100],
+          'HIDDEN_NODES': [32],
+          'OUTPUT_NODES': [1],
+          'lAYERS_NUM': [1],
+          'BIDIRECTIONAL': [False],
+          'DROPOUT': [0.2],
+          'LR': [0.01],
+          'EPOCHS': [8]
+          }
 
-# train_embedding = make_embedding(words_index) #make pickles of embeddings
 
-num_words = len(words_index)
-dimension = 100
-max_len = 24
+lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
 
-file = open('train_embedding.pkl', 'rb')
-emb_matrix = pickle.load(file)
-print(emb_matrix.shape)
-file.close()
