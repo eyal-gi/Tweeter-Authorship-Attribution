@@ -17,7 +17,6 @@ import math
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
 
-
 class ConvertDataset(Dataset):
     def __init__(self, x, y=None, train=False):
         # data loading
