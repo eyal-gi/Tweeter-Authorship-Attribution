@@ -139,20 +139,13 @@ class LSTM(nn.Module):
         for epoch in range(1, epochs + 1):
             # train the model
             train_loss, train_acc = self._train(train_iterator, optimizer, criterion)
-            print(f'epoch train acc: {train_acc}')
             # evaluate the model
             valid_loss, valid_acc = self._evaluate(val_iterator, criterion)
-            print(f'epoch val acc: {valid_acc}')
 
             history['accuracy'].append(train_acc)
             history['loss'].append(train_loss)
             history['val_accuracy'].append(valid_acc)
             history['val_loss'].append(valid_loss)
-
-            # # save the best model
-            # if valid_loss < best_valid_loss:
-            #     best_valid_loss = valid_loss
-            #     torch.save(self.state_dict(), 'saved_weights.pt')
 
             if verbose == 1:
                 print(
@@ -285,7 +278,7 @@ def lstm(train_lengths, val_lengths, train_data, valid_data, y_train, y_val, bat
                         optimizer=optimizer,
                         criterion=criterion,
                         epochs=epochs,
-                        verbose=1)
+                        verbose=0)
 
     return model, history
 
@@ -359,7 +352,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
         # loop through the folds
         f = 1
         for train_index, test_index in skf.split(X, y):
-            print(f)
+            # print(f)
             f = f + 1
             x_train, x_val = X[train_index], X[test_index]
             y_train, y_val = y[train_index], y[test_index]
@@ -374,7 +367,6 @@ def kfold_tuning(X, y, lengths, params, embeddings):
                                      dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
             # evaluate on the validation
             acc = lstm_clf.evaluate(len_train, len_val, x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
-            print(f'fold accuracy (train, val): {acc}')
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
@@ -519,7 +511,7 @@ X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
 embedding_vectors, vocab_size, x_data, data_lengths = make_embedding(X_emb_clean_train)
 
-params = {'BATCH_SIZE': [16, 32, 64],
+params = {'BATCH_SIZE': [64],
           'VOCAB_SIZE': [vocab_size],
           'EMBEDDING_DIM': [100],
           'HIDDEN_NODES': [64, 128, 256],
