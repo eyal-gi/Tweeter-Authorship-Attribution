@@ -1,6 +1,8 @@
+from torch.distributions import transforms
+
 import ex3_307887984_307830901 as ex3
 import nltk
-from nltk import TweetTokenizer
+from nltk import TweetTokenizer, WordNetLemmatizer
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import torch
@@ -21,8 +23,10 @@ import numpy as np
 import pandas as pd
 import math
 import re
+import tensorflow as tf
 
 # nltk.download('stopwords')
+# nltk.download('wordnet')
 
 
 # training_data = ex3.read_data('trump_train.tsv')
@@ -38,28 +42,20 @@ import re
 # check whether cuda is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# set parameters
-BATCH_SIZE = 64
-# SIZE_OF_VOCAB = len(TEXT.vocab)
-EMBEDDING_DIM = 100
-NUM_HIDDEN_NODES = 32
-NUM_OUTPUT_NODES = 1
-NUM_LAYERS = 2
-BIDIRECTION = True
-DROPOUT = 0.2
-
 
 class ConvertDataset(Dataset):
-    def __init__(self, x, y=None, train=False):
+    def __init__(self, x, lengths, y=None, train=False):
         # data loading
         self.train = train
 
         self.x = x
+        self.lengths = lengths
+
         if train: self.y = y
 
     def __getitem__(self, index):
         if self.train:
-            return self.x[index], self.y[index]
+            return self.x[index], self.lengths[index], self.y[index]
         else:
             return self.x[index]
 
@@ -87,35 +83,38 @@ class LSTM(nn.Module):
                             batch_first=True)
 
         # dense layer
-        self.fc = nn.Linear(hidden_dim, output_dim)
+        self.fc = nn.Linear(2*hidden_dim, output_dim)
 
         # activation function
         self.act = nn.Sigmoid()
 
-    def forward(self, text):
-        # # text = [batch size,sent_length]
-        # embedded = self.embedding(text)
-        # # embedded = [batch size, sent_len, emb dim]
-        #
-        # # packed sequence
-        # packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
-        #
-        # packed_output, (hidden, cell) = self.lstm(packed_embedded)
-        # # hidden = [batch size, num layers * num directions,hid dim]
-        # # cell = [batch size, num layers * num directions,hid dim]
-        #
-        # # concat the final forward and backward hidden state
-        # hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
-        #
-        # # hidden = [batch size, hid dim * num directions]
-        # dense_outputs = self.fc(hidden)
-
-        #-------------------------------------------------
+    def forward(self, text, text_lengths):
+        # ## text = [batch size,sent_length]
         embedded = self.embedding(text)
-        lstm_output, _ = self.lstm(embedded)
-        x = self.fc(lstm_output[:,-1,:])
-        # Final activation function
-        outputs = self.act(x)
+        # ## embedded = [batch size, sent_len, emb dim]
+
+        # ## packed sequence
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True, enforce_sorted=False)
+
+        packed_output, (hidden, cell) = self.lstm(packed_embedded)
+        # ## hidden = [batch size, num layers * num directions,hid dim]
+        # ## cell = [batch size, num layers * num directions,hid dim]
+
+        # ## concat the final forward and backward hidden state
+        hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+
+        # ## hidden = [batch size, hid dim * num directions]
+        dense_outputs = self.fc(hidden)
+
+        # ## Final activation function
+        outputs = self.act(dense_outputs)
+
+        # -------------------------------------------------
+        # embedded = self.embedding(text)
+        # lstm_output, _ = self.lstm(embedded)
+        # x = self.fc(lstm_output[:, -1, :])
+        # # Final activation function
+        # outputs = self.act(x)
 
         return outputs
 
@@ -167,7 +166,7 @@ class LSTM(nn.Module):
         # initiate train loss and accuracy for each epoch
         epoch_loss, epoch_acc = 0, 0
 
-        for x_batch, labels in iterator:
+        for x_batch, lengths, labels in iterator:
             # resets the gradients after every batch
             optimizer.zero_grad()
 
@@ -175,7 +174,7 @@ class LSTM(nn.Module):
             # text, text_lengths = batch.text
 
             # convert to 1D tensor
-            predictions = self(x_batch)
+            predictions = self(x_batch, lengths)
 
             # compute the loss
             loss = criterion(predictions, labels.unsqueeze(1))
@@ -204,13 +203,13 @@ class LSTM(nn.Module):
 
         # deactivates autograd
         with torch.no_grad():
-            for x_batch, labels in iterator:
+            for x_batch, lengths, labels in iterator:
                 # retrieve text and no. of words
                 # text, text_lengths = batch.text
 
                 # convert to 1d tensor
                 # predictions = self(text, text_lengths).squeeze()
-                predictions = self(x_batch)
+                predictions = self(x_batch, lengths)
 
                 # compute loss and accuracy
                 loss = criterion(predictions, labels.unsqueeze(1))
@@ -236,7 +235,7 @@ class LSTM(nn.Module):
 
         return acc
 
-    def evaluate(self, x_train, x_test, y_train, y_test):
+    def evaluate(self, train_len, test_len, x_train, x_test, y_train, y_test):
         """
         Evaluate the model on a test set and returns the train and test accuracy.
         :param x_train: np.array of train data
@@ -247,21 +246,23 @@ class LSTM(nn.Module):
         """
         # evaluation
         self.eval()  # model.eval() indicates the model this is model eval
-        train_predicted = self(x_train)
+        train_predicted = self(x_train, train_len)
         # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
-        test_predicted = self(x_test)
+        test_predicted = self(x_test, test_len)
         # test_predicted = test_predicted
         test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
 
         return train_acc, test_acc
 
 
-def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes,
+def lstm(train_lengths, val_lengths, train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim,
+         num_hidden_nodes,
          num_output_nodes, num_layers, directional, dropout, learning_rate, epochs, pretrained_embeddings):
     # # Load an iterator
-    train_iterator, valid_iterator = prepare_datasets(train_data, y_train, valid_data, y_val, batch_size)
+    train_iterator, valid_iterator = prepare_datasets(train_lengths, val_lengths, train_data, y_train, valid_data,
+                                                      y_val, batch_size)
 
     # instantiate the model
     model = LSTM(size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes, num_layers,
@@ -289,7 +290,7 @@ def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embe
     return model, history
 
 
-def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
+def prepare_datasets(train_lengths, val_lengths, x_train, y_train, x_validation, y_validation, batch_size):
     """
     Converts DataFrames to DataLoaders
     :param x_train: train dataframe
@@ -306,9 +307,11 @@ def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
 
     #  Convert to torch Datasets
     train_dataset = ConvertDataset(x=x_train,
+                                   lengths=train_lengths,
                                    y=torch.FloatTensor(y_train),
                                    train=True)
     validation_dataset = ConvertDataset(x=x_validation,
+                                        lengths=val_lengths,
                                         y=torch.FloatTensor(y_validation),
                                         train=True)
 
@@ -319,7 +322,7 @@ def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
     return train_loader, validation_loader
 
 
-def kfold_tuning(X, y, params, embeddings):
+def kfold_tuning(X, y, lengths, params, embeddings):
     """
     Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
     :param embeddings:
@@ -357,18 +360,20 @@ def kfold_tuning(X, y, params, embeddings):
         f = 1
         for train_index, test_index in skf.split(X, y):
             print(f)
-            f = f+1
+            f = f + 1
             x_train, x_val = X[train_index], X[test_index]
             y_train, y_val = y[train_index], y[test_index]
+            len_train, len_val = lengths[train_index], lengths[test_index]
 
             # initiate the neural network
-            lstm_clf, history = lstm(train_data=x_train, valid_data=x_val, y_train=y_train, y_val=y_val, batch_size=b_s,
+            lstm_clf, history = lstm(train_lengths=len_train, val_lengths=len_val,train_data=x_train, valid_data=x_val, y_train=y_train,
+                                     y_val=y_val, batch_size=b_s,
                                      epochs=e,
                                      size_of_vocab=params['VOCAB_SIZE'][0], embedding_dim=params['EMBEDDING_DIM'][0],
                                      num_hidden_nodes=h_n, num_output_nodes=1, num_layers=l_n, directional=direction,
                                      dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
             # evaluate on the validation
-            acc = lstm_clf.evaluate(x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
+            acc = lstm_clf.evaluate(len_train, len_val, x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
             print(f'fold accuracy (train, val): {acc}')
             # append results of the fold
             cv_train_acc.append(acc[0])
@@ -386,7 +391,7 @@ def kfold_tuning(X, y, params, embeddings):
     return cv_results
 
 
-def lstm_tuning(x_train, y_train, params_grid, embedding_vector):
+def lstm_tuning(train_lengths, x_train, y_train, params_grid, embedding_vector):
     """
     Preforms parameters tuning on the ann
     :param x_train: train data frame
@@ -394,7 +399,7 @@ def lstm_tuning(x_train, y_train, params_grid, embedding_vector):
     :param params_grid: tuning parameters (dictionary)
     :return: Best model
     """
-    results = kfold_tuning(X=x_train, y=y_train, params=params_grid, embeddings=embedding_vector)
+    results = kfold_tuning(X=x_train, y=y_train, lengths=train_lengths, params=params_grid, embeddings=embedding_vector)
     # convert dictionary to DataFrame
     results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
     # print table
@@ -441,12 +446,13 @@ def preprocess_tweets_for_embedding(x_emb_train):
         tweet_lower_case = tweet.lower()  # tweet to lowercase
         remove_stock_market_symbols = re.sub(r'\$\w*', '', tweet_lower_case)  # remove stock-market
         remove_hashtags = re.sub(r'#', '', remove_stock_market_symbols)  # remove hashtag
-        remove_url = re.sub(r'https?:\/\/.*[\r\n]*', '', remove_hashtags)  # remove urls
+        remove_url = re.sub(r'https?:\/\/.*[\r\n]*', 'url', remove_hashtags)  # remove urls
         remove_sw = remove_stop_words(remove_url)  # remove stopwords
         remove_punc = remove_punctuation(remove_sw)  # remove punctuation
         tweet_tokenize = TweetTokenizer(strip_handles=True, reduce_len=True)
         tweet_tokens_list = tweet_tokenize.tokenize(remove_punc)
-        clean_tweet = tweet_tokens_list
+        tweett_lemmatize = lemmatizing(tweet_tokens_list)
+        clean_tweet = tweett_lemmatize
 
         clean_tweets.append(clean_tweet)
 
@@ -473,7 +479,15 @@ def remove_punctuation(tweet):
     tweet = "".join(word for word in tweet if word not in set(string.punctuation))
     return tweet
 
-
+def lemmatizing(tokenized_text):
+    """
+    this function lemmatizing each word token in the list input.
+    :param tokenized_text: list of tokens
+    :return: lemmatize tokens list
+    """
+    wn = nltk.WordNetLemmatizer()
+    text = [wn.lemmatize(word) for word in tokenized_text]
+    return text
 ########################### create the embeddings #################################
 
 
@@ -483,15 +497,17 @@ def make_embedding(clean_data):
     :return: embedding matrix of our tweets
     """
 
-    TEXT = Field(sequential=True, batch_first=True, include_lengths=False, fix_length=24)
+    TEXT = Field(sequential=True, batch_first=True, include_lengths=True, fix_length=24)
     data = list(map(TEXT.preprocess, clean_data))
     data = TEXT.pad(data)
-    TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
+    TEXT.build_vocab(data[0], vectors='glove.twitter.27B.100d')
     vocab_size = len(TEXT.vocab)
-    data_for_embedding = TEXT.numericalize(data)
+    data_for_embedding, length = TEXT.numericalize(data)
+    # print(data_for_embedding , length)
+
     embedding_vectors = TEXT.vocab.vectors
 
-    return data_for_embedding, embedding_vectors, vocab_size
+    return embedding_vectors, vocab_size, data_for_embedding, length
 
 
 ####### read and make data to preprocessing #######
@@ -501,19 +517,18 @@ X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding
 
 X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
+embedding_vectors, vocab_size, x_data, data_lengths = make_embedding(X_emb_clean_train)
 
-data_for_lstm, embedding_vectors, vocab_size = make_embedding(X_emb_clean_train)
-
-params = {'BATCH_SIZE': [32],
+params = {'BATCH_SIZE': [16, 32, 64],
           'VOCAB_SIZE': [vocab_size],
           'EMBEDDING_DIM': [100],
-          'HIDDEN_NODES': [32],
+          'HIDDEN_NODES': [64, 128, 256],
           'OUTPUT_NODES': [1],
           'lAYERS_NUM': [2],
-          'BIDIRECTIONAL': [False],
-          'DROPOUT': [0.2],
-          'LR': [0.01],
-          'EPOCHS': [1]
+          'BIDIRECTIONAL': [True],
+          'DROPOUT': [0.1, 0.2, 0.3],
+          'LR': [0.001, 0.01],
+          'EPOCHS': [2, 4, 8]
           }
-
-lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
+lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=params,
+            embedding_vector=embedding_vectors)
