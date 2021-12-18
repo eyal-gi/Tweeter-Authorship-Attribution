@@ -2,6 +2,7 @@ import csv
 import nltk
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
     GridSearchCV, RandomizedSearchCV
@@ -556,10 +557,11 @@ def read_and_split_data():
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv,
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train,
+                            scoring=['accuracy', 'precision', 'recall', 'roc_auc', 'f1'], cv=cv,
                             return_train_score=True)  # score for model without hyper parameters tuning.
     print(
-        f"Validation Accuracy: {'{:.3}'.format(np.mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_score']))}")
+        f"Validation:: Accuracy: {'{:.3}'.format(np.mean(scores['test_accuracy']))} | Precision: {'{:.3}'.format(np.mean(scores['test_precision']))} Recall: {'{:.3}'.format(np.mean(scores['test_recall']))} AUC: {'{:.3}'.format(np.mean(scores['test_roc_auc']))} F1: {'{:.3}'.format(np.mean(scores['test_f1']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_accuracy']))}")
 
     return cv
 
@@ -625,6 +627,8 @@ def logistic_regression_model(x_train, y_train):
 def rf_model(x_train, y_train):
     print('Random Forest classifier')
     rf_clf = RandomForestClassifier(random_state=42)  # basic model
+    rf_clf = RandomForestClassifier(n_estimators=600, criterion='gini', max_depth=8, max_features='sqrt',
+                                    min_samples_leaf=4, min_samples_split=2, random_state=1)  # chosen model
     cv = kfold_validation(rf_clf, x_train, y_train)
 
     # #-----Params-----#
@@ -646,12 +650,12 @@ def rf_model(x_train, y_train):
     # param_random_tuning(rf_clf, x_train, y_train, param_grid, cv, 200)
 
     # #____ Fine Tuning _____#
-    max_depth = list(range(50, 70, 2))
+    max_depth = list(range(2, 12, 2))
     max_depth.append(None)
-    param_grid = {'n_estimators': [636],
+    param_grid = {'n_estimators': [600],
                   'criterion': ['gini'],
-                  'max_depth': max_depth,
-                  'min_samples_split': [1, 2, 3, 4, 5, 6],
+                  'max_depth': [8],
+                  'min_samples_split': [2],
                   'min_samples_leaf': [4],
                   'max_features': ["sqrt"],
                   'bootstrap': [False]}
@@ -665,6 +669,6 @@ if __name__ == '__main__':
     # pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
 
-    logistic_regression_model(X_train, Y_train)
+    # logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
-    # rf_model(X_train, Y_train)
+    rf_model(X_train, Y_train)

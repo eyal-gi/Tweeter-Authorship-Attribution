@@ -13,7 +13,6 @@ from torch.nn.utils.rnn import pad_sequence
 from torchtext.legacy.data import Field, LabelField, BucketIterator, TabularDataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import confusion_matrix, classification_report
-import spacy
 import string
 import pickle
 from tabulate import tabulate
@@ -23,7 +22,6 @@ import numpy as np
 import pandas as pd
 import math
 import re
-import tensorflow as tf
 
 # nltk.download('stopwords')
 # nltk.download('wordnet')
@@ -324,7 +322,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
     :param params: Dictionary of parameters.
     :return: Results data frame
     """
-    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+    skf = StratifiedKFold(n_splits=5, random_state=1, shuffle=True)
 
     # initialize results lists
     tuning_params = []
@@ -335,7 +333,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
     options = 1
     for p in params:
         options = options * len(params[p])
-    print(f'{options} Options -> {10 * options} iterations')
+    print(f'Fitting 10 folds for each of {options} candidates, totalling {options * 10} fits')
 
     # loop through all possible combinations
     param_values = [v for v in params.values()]

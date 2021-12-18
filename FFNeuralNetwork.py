@@ -379,9 +379,9 @@ params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
                       }
 
 test_params = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[128, 128]],
-               'EPOCHS': [1],
-               'BATCH_SIZE': [64],
+               'HIDDEN_SIZE': [[32, 32]],
+               'EPOCHS': [32],
+               'BATCH_SIZE': [16],
                'LR': [0.01]
                }
 
