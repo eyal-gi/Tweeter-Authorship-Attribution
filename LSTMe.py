@@ -26,7 +26,7 @@ import re
 import tensorflow as tf
 
 # nltk.download('stopwords')
-nltk.download('wordnet')
+# nltk.download('wordnet')
 
 
 # training_data = ex3.read_data('trump_train.tsv')
@@ -331,7 +331,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
     :param params: Dictionary of parameters.
     :return: Results data frame
     """
-    skf = StratifiedKFold(n_splits=5, random_state=1, shuffle=True)
+    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
 
     # initialize results lists
     tuning_params = []
@@ -519,16 +519,16 @@ X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
 embedding_vectors, vocab_size, x_data, data_lengths = make_embedding(X_emb_clean_train)
 
-params = {'BATCH_SIZE': [64],
+params = {'BATCH_SIZE': [16, 32, 64],
           'VOCAB_SIZE': [vocab_size],
           'EMBEDDING_DIM': [100],
-          'HIDDEN_NODES': [32],
+          'HIDDEN_NODES': [64, 128, 256],
           'OUTPUT_NODES': [1],
           'lAYERS_NUM': [2],
           'BIDIRECTIONAL': [True],
-          'DROPOUT': [0.1],
-          'LR': [0.001],
-          'EPOCHS': [2]
+          'DROPOUT': [0.1, 0.2, 0.3],
+          'LR': [0.001, 0.01],
+          'EPOCHS': [2, 4, 8]
           }
 lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=params,
             embedding_vector=embedding_vectors)
