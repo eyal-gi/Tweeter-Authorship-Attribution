@@ -1,5 +1,3 @@
-from torch.distributions import transforms
-
 import ex3_307887984_307830901 as ex3
 import nltk
 from nltk import TweetTokenizer, WordNetLemmatizer
@@ -12,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
 from torchtext.legacy.data import Field, LabelField, BucketIterator, TabularDataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.metrics import confusion_matrix, classification_report
 import string
 import pickle
@@ -81,7 +80,7 @@ class LSTM(nn.Module):
                             batch_first=True)
 
         # dense layer
-        self.fc = nn.Linear(2*hidden_dim, output_dim)
+        self.fc = nn.Linear(2 * hidden_dim, output_dim)
 
         # activation function
         self.act = nn.Sigmoid()
@@ -92,7 +91,8 @@ class LSTM(nn.Module):
         # ## embedded = [batch size, sent_len, emb dim]
 
         # ## packed sequence
-        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True, enforce_sorted=False)
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True,
+                                                            enforce_sorted=False)
 
         packed_output, (hidden, cell) = self.lstm(packed_embedded)
         # ## hidden = [batch size, num layers * num directions,hid dim]
@@ -238,14 +238,18 @@ class LSTM(nn.Module):
         # evaluation
         self.eval()  # model.eval() indicates the model this is model eval
         train_predicted = self(x_train, train_len)
-        # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
         test_predicted = self(x_test, test_len)
-        # test_predicted = test_predicted
-        test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
+        test_predicted = test_predicted.reshape(-1).detach().numpy().round()
+        # test_acc = (test_predicted == y_test).mean()
+        test_acc = accuracy_score(y_test, test_predicted)
+        test_prec = precision_score(y_test, test_predicted)
+        test_recall = recall_score(y_test, test_predicted)
+        test_auc = roc_auc_score(y_test, test_predicted)
+        test_f1 = f1_score(y_test, test_predicted)
 
-        return train_acc, test_acc
+        return train_acc, test_acc, test_prec, test_recall, test_auc, test_f1
 
 
 def lstm(train_lengths, val_lengths, train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim,
@@ -328,6 +332,10 @@ def kfold_tuning(X, y, lengths, params, embeddings):
     tuning_params = []
     tuning_train_acc = []
     tuning_val_acc = []
+    tuning_val_prec = []
+    tuning_val_recall = []
+    tuning_val_auc = []
+    tuning_val_f1 = []
 
     # counts number of tuning options
     options = 1
@@ -347,6 +355,10 @@ def kfold_tuning(X, y, lengths, params, embeddings):
         # initiates cross-validation results
         cv_train_acc = []
         cv_val_acc = []
+        cv_val_prec = []
+        cv_val_recall = []
+        cv_val_auc = []
+        cv_val_f1 = []
         # loop through the folds
         f = 1
         for train_index, test_index in skf.split(X, y):
@@ -357,7 +369,8 @@ def kfold_tuning(X, y, lengths, params, embeddings):
             len_train, len_val = lengths[train_index], lengths[test_index]
 
             # initiate the neural network
-            lstm_clf, history = lstm(train_lengths=len_train, val_lengths=len_val,train_data=x_train, valid_data=x_val, y_train=y_train,
+            lstm_clf, history = lstm(train_lengths=len_train, val_lengths=len_val, train_data=x_train, valid_data=x_val,
+                                     y_train=y_train,
                                      y_val=y_val, batch_size=b_s,
                                      epochs=e,
                                      size_of_vocab=params['VOCAB_SIZE'][0], embedding_dim=params['EMBEDDING_DIM'][0],
@@ -368,7 +381,12 @@ def kfold_tuning(X, y, lengths, params, embeddings):
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
-        print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
+            cv_val_prec.append(acc[2])
+            cv_val_recall.append(acc[3])
+            cv_val_auc.append(acc[4])
+            cv_val_f1.append(acc[5])
+        print(
+            f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}, val_prec:{np.mean(cv_val_prec):.3f}, val_recall:{np.mean(cv_val_recall):.3f}, val_auc:{np.mean(cv_val_auc):.3f}, val_f1:{np.mean(cv_val_f1):.3f}')
         iter_params = {'hidden_size': h_n, 'hidden_size': h_n, 'epochs': e,
                        'batch_size': b_s, 'learning_rate': lr, 'layers_num': l_n, 'dropout': dropout,
                        'bidirectional': direction}
@@ -469,6 +487,7 @@ def remove_punctuation(tweet):
     tweet = "".join(word for word in tweet if word not in set(string.punctuation))
     return tweet
 
+
 def lemmatizing(tokenized_text):
     """
     this function lemmatizing each word token in the list input.
@@ -478,6 +497,8 @@ def lemmatizing(tokenized_text):
     wn = nltk.WordNetLemmatizer()
     text = [wn.lemmatize(word) for word in tokenized_text]
     return text
+
+
 ########################### create the embeddings #################################
 
 
@@ -520,5 +541,18 @@ params = {'BATCH_SIZE': [64],
           'LR': [0.001, 0.01],
           'EPOCHS': [2, 4, 8]
           }
-lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=params,
+
+best_params = {'BATCH_SIZE': [16],
+               'VOCAB_SIZE': [vocab_size],
+               'EMBEDDING_DIM': [100],
+               'HIDDEN_NODES': [64],
+               'OUTPUT_NODES': [1],
+               'lAYERS_NUM': [2],
+               'BIDIRECTIONAL': [True],
+               'DROPOUT': [0.2],
+               'LR': [0.01],
+               'EPOCHS': [2]
+               }
+
+lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=best_params,
             embedding_vector=embedding_vectors)

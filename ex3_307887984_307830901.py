@@ -502,7 +502,7 @@ def feature_selection(df, test_flag=False):
         final_df = final_df.drop('VBZ', axis=1)
         final_df = final_df.drop('VBD', axis=1)
 
-        final_df.to_csv('train_df.csv', index=False)
+        # final_df.to_csv('train_df.csv', index=False)
 
     else:
         final_df = final_df.drop('user', axis=1)
@@ -515,7 +515,7 @@ def feature_selection(df, test_flag=False):
         final_df = final_df.drop('VBZ', axis=1)
         final_df = final_df.drop('VBD', axis=1)
 
-        final_df.to_csv('test_df.csv', index=False)
+        # final_df.to_csv('test_df.csv', index=False)
 
     return final_df
 
@@ -529,7 +529,7 @@ def pre_process_main():
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
-    # data_understanding(train_data_fe)
+    data_understanding(train_data_fe)
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
@@ -599,6 +599,8 @@ def param_random_tuning(clf, x_train, y_train, params_grid, cv, n_iter):
 def svm_model(x_train, y_train):
     print('SVM classifier')
     svm_clf = svm.SVC(random_state=42)  # basic model
+    svm_clf = svm.SVC(kernel='rbf', C=1, gamma=10,random_state=1)  # chosen non-linear model
+    svm_clf = svm.SVC(kernel='linear', C=0.01, random_state=1)  # chosen linear model
     cv = kfold_validation(svm_clf, x_train, y_train)
     param_grid = {'C': [0.01, 0.1, 0.5, 1, 5, 10, 100],
                   'kernel': ['linear', 'rbf', 'poly'],
@@ -666,9 +668,9 @@ def rf_model(x_train, y_train):
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
-    # pre_process_main()
+    pre_process_main()
     X_train, Y_train, X_test = read_and_split_data()
 
     # logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
-    rf_model(X_train, Y_train)
+    # rf_model(X_train, Y_train)

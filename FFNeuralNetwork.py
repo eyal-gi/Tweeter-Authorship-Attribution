@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +18,7 @@ import re
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
+
 
 class ConvertDataset(Dataset):
     def __init__(self, x, y=None, train=False):
@@ -173,14 +175,18 @@ class NN(nn.Module):
         # evaluation
         self.eval()  # model.eval() indicates the model this is model eval
         train_predicted = self(torch.tensor(x_train, dtype=torch.float32))
-        # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
         test_predicted = self(torch.tensor(x_test, dtype=torch.float32))
-        # test_predicted = test_predicted
-        test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
+        test_predicted = test_predicted.reshape(-1).detach().numpy().round()
+        # test_acc = (test_predicted == y_test).mean()
+        test_acc = accuracy_score(y_test, test_predicted)
+        test_prec = precision_score(y_test, test_predicted)
+        test_recall = recall_score(y_test, test_predicted)
+        test_auc = roc_auc_score(y_test, test_predicted)
+        test_f1 = f1_score(y_test, test_predicted)
 
-        return train_acc, test_acc
+        return train_acc, test_acc, test_prec, test_recall, test_auc, test_f1
 
     def plot_acc_loss(self, history_dict):
         """
@@ -279,6 +285,10 @@ def kfold_tuning(X, y, params):
     tuning_params = []
     tuning_train_acc = []
     tuning_val_acc = []
+    tuning_val_prec = []
+    tuning_val_recall = []
+    tuning_val_auc = []
+    tuning_val_f1 = []
 
     # counts number of tuning options
     options = 1
@@ -298,6 +308,10 @@ def kfold_tuning(X, y, params):
         # initiates cross-validation results
         cv_train_acc = []
         cv_val_acc = []
+        cv_val_prec = []
+        cv_val_recall = []
+        cv_val_auc = []
+        cv_val_f1 = []
         # loop through the folds
         for train_index, test_index in skf.split(X, y):
             x_train, x_val = X.iloc[train_index], X.iloc[test_index]
@@ -312,17 +326,25 @@ def kfold_tuning(X, y, params):
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
+            cv_val_prec.append(acc[2])
+            cv_val_recall.append(acc[3])
+            cv_val_auc.append(acc[4])
+            cv_val_f1.append(acc[5])
             # nn_clf.plot_acc_loss(history)
-        print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
+        print(
+            f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}, val_prec:{np.mean(cv_val_prec):.3f}, val_recall:{np.mean(cv_val_recall):.3f}, val_auc:{np.mean(cv_val_auc):.3f}, val_f1:{np.mean(cv_val_f1):.3f}')
         iter_params = {'input_size': i_s, 'hidden_size': h_s, 'epochs': e,
                        'batch_size': b_s, 'learning_rate': lr}
         # append results of the iteration
         tuning_params.append(iter_params)
         tuning_val_acc.append(np.mean(cv_val_acc))
+        tuning_val_prec.append(np.mean(cv_val_prec))
+        tuning_val_recall.append(np.mean(cv_val_recall))
+        tuning_val_auc.append(np.mean(cv_val_auc))
+        tuning_val_f1.append(np.mean(cv_val_f1))
+
         tuning_train_acc.append(np.mean(cv_train_acc))
 
-        print(cv_train_acc)
-        print(cv_val_acc)
     cv_results = {'params': tuning_params, 'mean_test_score': tuning_val_acc, 'mean_train_score': tuning_train_acc}
     return cv_results
 
@@ -392,5 +414,3 @@ best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=test_param
 #                      epochs=100)
 # print(history)
 # model.plot_acc_loss(history)
-
-
