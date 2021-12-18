@@ -312,7 +312,7 @@ def kfold_tuning(X, y, params):
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
-            nn_clf.plot_acc_loss(history)
+            # nn_clf.plot_acc_loss(history)
         print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
         iter_params = {'input_size': i_s, 'hidden_size': h_s, 'epochs': e,
                        'batch_size': b_s, 'learning_rate': lr}
@@ -321,6 +321,8 @@ def kfold_tuning(X, y, params):
         tuning_val_acc.append(np.mean(cv_val_acc))
         tuning_train_acc.append(np.mean(cv_train_acc))
 
+        print(cv_train_acc)
+        print(cv_val_acc)
     cv_results = {'params': tuning_params, 'mean_test_score': tuning_val_acc, 'mean_train_score': tuning_train_acc}
     return cv_results
 
@@ -378,17 +380,17 @@ params_grid_1layer = {'INPUT_SIZE': [X_train.shape[1]],
 
 test_params = {'INPUT_SIZE': [X_train.shape[1]],
                'HIDDEN_SIZE': [[128, 128]],
-               'EPOCHS': [100],
+               'EPOCHS': [1],
                'BATCH_SIZE': [64],
-               'LR': [0.001]
+               'LR': [0.01]
                }
 
-# best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=test_params)
+best_model = ann_tuning(x_train=X_train, y_train=Y_train, params_grid=test_params)
 
-X, x, Y, y = train_test_split(X_train, Y_train, train_size=0.8, random_state=42, stratify=Y_train)
-model, history = ann(X=X, y=Y, X_val=x, y_val=y, input_size=15, hidden_size=(128, 128), batch_size=64, lr=0.001,
-                     epochs=100)
-print(history)
-model.plot_acc_loss(history)
+# X, x, Y, y = train_test_split(X_train, Y_train, train_size=0.8, random_state=42, stratify=Y_train)
+# model, history = ann(X=X, y=Y, X_val=x, y_val=y, input_size=15, hidden_size=(128, 128), batch_size=64, lr=0.001,
+#                      epochs=100)
+# print(history)
+# model.plot_acc_loss(history)
 
 

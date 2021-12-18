@@ -1,4 +1,5 @@
 import ex3_307887984_307830901 as ex3
+import nltk
 from nltk import TweetTokenizer
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -69,13 +70,13 @@ class ConvertDataset(Dataset):
 class LSTM(nn.Module):
 
     # define all the layers used in model
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, n_layers,
+    def __init__(self, vocab_size_, embedding_dim, hidden_dim, output_dim, n_layers,
                  bidirectional, dropout):
         # Constructor
         super().__init__()
 
         # embedding layer
-        self.embedding = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
+        self.embedding = nn.Embedding(num_embeddings=vocab_size_, embedding_dim=embedding_dim)
 
         # lstm layer
         self.lstm = nn.LSTM(embedding_dim,
@@ -86,31 +87,35 @@ class LSTM(nn.Module):
                             batch_first=True)
 
         # dense layer
-        self.fc = nn.Linear(hidden_dim * 2, output_dim)
+        self.fc = nn.Linear(hidden_dim, output_dim)
 
         # activation function
         self.act = nn.Sigmoid()
 
-    def forward(self, text, text_lengths):
-        # text = [batch size,sent_length]
+    def forward(self, text):
+        # # text = [batch size,sent_length]
+        # embedded = self.embedding(text)
+        # # embedded = [batch size, sent_len, emb dim]
+        #
+        # # packed sequence
+        # packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
+        #
+        # packed_output, (hidden, cell) = self.lstm(packed_embedded)
+        # # hidden = [batch size, num layers * num directions,hid dim]
+        # # cell = [batch size, num layers * num directions,hid dim]
+        #
+        # # concat the final forward and backward hidden state
+        # hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+        #
+        # # hidden = [batch size, hid dim * num directions]
+        # dense_outputs = self.fc(hidden)
+
+        #-------------------------------------------------
         embedded = self.embedding(text)
-        # embedded = [batch size, sent_len, emb dim]
-
-        # packed sequence
-        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
-
-        packed_output, (hidden, cell) = self.lstm(packed_embedded)
-        # hidden = [batch size, num layers * num directions,hid dim]
-        # cell = [batch size, num layers * num directions,hid dim]
-
-        # concat the final forward and backward hidden state
-        hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
-
-        # hidden = [batch size, hid dim * num directions]
-        dense_outputs = self.fc(hidden)
-
+        lstm_output, _ = self.lstm(embedded)
+        x = self.fc(lstm_output[:,-1,:])
         # Final activation function
-        outputs = self.act(dense_outputs)
+        outputs = self.act(x)
 
         return outputs
 
@@ -135,18 +140,20 @@ class LSTM(nn.Module):
         for epoch in range(1, epochs + 1):
             # train the model
             train_loss, train_acc = self._train(train_iterator, optimizer, criterion)
+            print(f'epoch train acc: {train_acc}')
             # evaluate the model
             valid_loss, valid_acc = self._evaluate(val_iterator, criterion)
+            print(f'epoch val acc: {valid_acc}')
 
             history['accuracy'].append(train_acc)
             history['loss'].append(train_loss)
             history['val_accuracy'].append(valid_acc)
             history['val_loss'].append(valid_loss)
 
-            # save the best model
-            if valid_loss < best_valid_loss:
-                best_valid_loss = valid_loss
-                torch.save(self.state_dict(), 'saved_weights.pt')
+            # # save the best model
+            # if valid_loss < best_valid_loss:
+            #     best_valid_loss = valid_loss
+            #     torch.save(self.state_dict(), 'saved_weights.pt')
 
             if verbose == 1:
                 print(
@@ -171,10 +178,10 @@ class LSTM(nn.Module):
             predictions = self(x_batch)
 
             # compute the loss
-            loss = criterion(predictions, labels)
+            loss = criterion(predictions, labels.unsqueeze(1))
 
             # compute the binary accuracy
-            acc = self._binary_accuracy(predictions, labels)
+            acc = self._binary_acc(predictions, labels.unsqueeze(1))
 
             # backpropagation the loss and compute the gradients
             loss.backward()
@@ -206,8 +213,8 @@ class LSTM(nn.Module):
                 predictions = self(x_batch)
 
                 # compute loss and accuracy
-                loss = criterion(predictions, labels)
-                acc = self._binary_accuracy(predictions, labels)
+                loss = criterion(predictions, labels.unsqueeze(1))
+                acc = self._binary_acc(predictions, labels.unsqueeze(1))
 
                 # keep track of loss and accuracy
                 epoch_loss += loss.item()
@@ -240,11 +247,11 @@ class LSTM(nn.Module):
         """
         # evaluation
         self.eval()  # model.eval() indicates the model this is model eval
-        train_predicted = self(torch.tensor(x_train, dtype=torch.float32))
+        train_predicted = self(x_train)
         # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
-        test_predicted = self(torch.tensor(x_test, dtype=torch.float32))
+        test_predicted = self(x_test)
         # test_predicted = test_predicted
         test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
 
@@ -277,7 +284,7 @@ def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embe
                         optimizer=optimizer,
                         criterion=criterion,
                         epochs=epochs,
-                        verbose=0)
+                        verbose=1)
 
     return model, history
 
@@ -294,16 +301,14 @@ def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
     """
 
     # convert dataframe to numpy arrays
-    x_train = x_train.to_numpy()
-    x_validation = x_validation.to_numpy()
     y_train = y_train.to_numpy()
     y_validation = y_validation.to_numpy()
 
     #  Convert to torch Datasets
-    train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
+    train_dataset = ConvertDataset(x=x_train,
                                    y=torch.FloatTensor(y_train),
                                    train=True)
-    validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
+    validation_dataset = ConvertDataset(x=x_validation,
                                         y=torch.FloatTensor(y_validation),
                                         train=True)
 
@@ -339,7 +344,7 @@ def kfold_tuning(X, y, params, embeddings):
     # loop through all possible combinations
     param_values = [v for v in params.values()]
     i = 1  # index of current iteration
-    for b_s, h_n, l_n, direction, dropout, lr, e in product(*param_values):
+    for b_s, v_s, e_d, h_n, o_n, l_n, direction, dropout, lr, e in product(*param_values):
         print(
             f'{i}/{options} Tuning parameters-> | hidden_size:{h_n} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr} | layers_num:{l_n} | dropout:{dropout} | bidirectional:{direction}'
         )
@@ -349,19 +354,22 @@ def kfold_tuning(X, y, params, embeddings):
         cv_train_acc = []
         cv_val_acc = []
         # loop through the folds
+        f = 1
         for train_index, test_index in skf.split(X, y):
-            x_train, x_val = X.iloc[train_index], X.iloc[test_index]
-            y_train, y_val = y.iloc[train_index], y.iloc[test_index]
+            print(f)
+            f = f+1
+            x_train, x_val = X[train_index], X[test_index]
+            y_train, y_val = y[train_index], y[test_index]
 
             # initiate the neural network
-            lstm_clf, history = lstm(train_data=x_train, valid_data=x_val, train_y=y_train, val_y=y_val, batch_size=b_s,
+            lstm_clf, history = lstm(train_data=x_train, valid_data=x_val, y_train=y_train, y_val=y_val, batch_size=b_s,
                                      epochs=e,
-                                     size_of_vocab=params['VOCAB_SIZE'], embedding_dim=params['EMBEDDING_DIM'],
+                                     size_of_vocab=params['VOCAB_SIZE'][0], embedding_dim=params['EMBEDDING_DIM'][0],
                                      num_hidden_nodes=h_n, num_output_nodes=1, num_layers=l_n, directional=direction,
                                      dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
             # evaluate on the validation
-            acc = lstm_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
-                                    y_val.to_numpy())
+            acc = lstm_clf.evaluate(x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
+            print(f'fold accuracy (train, val): {acc}')
             # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
@@ -475,7 +483,7 @@ def make_embedding(clean_data):
     :return: embedding matrix of our tweets
     """
 
-    TEXT = Field(sequential=True, batch_first=True, include_lengths=True, fix_length=24)
+    TEXT = Field(sequential=True, batch_first=True, include_lengths=False, fix_length=24)
     data = list(map(TEXT.preprocess, clean_data))
     data = TEXT.pad(data)
     TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
@@ -501,11 +509,11 @@ params = {'BATCH_SIZE': [32],
           'EMBEDDING_DIM': [100],
           'HIDDEN_NODES': [32],
           'OUTPUT_NODES': [1],
-          'lAYERS_NUM': [1],
+          'lAYERS_NUM': [2],
           'BIDIRECTIONAL': [False],
           'DROPOUT': [0.2],
           'LR': [0.01],
-          'EPOCHS': [8]
+          'EPOCHS': [1]
           }
 
 lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
