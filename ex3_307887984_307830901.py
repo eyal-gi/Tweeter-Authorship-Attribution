@@ -21,6 +21,9 @@ import copy
 import math
 import calendar
 import torch
+import FFNeuralNetwork
+import torch.nn as nn
+import torch.optim as optim
 
 # put in comments (imports for data understanding and hyper parameters tuning
 from dython import nominal
@@ -36,12 +39,39 @@ from tabulate import tabulate
 # --------------------------------------- Data Understanding & Pre Processing ----------------------------------------#
 ########################################################################################################################
 
-def load_best_model():  # todo
+def load_best_model():  #
+    # todo : load pickle
     pass
 
 
-def train_best_model():  # todo
-    pass
+def train_best_model():
+    print("Training best model (ANN)")
+    # load data
+    train_data, test_data = pre_process_main()
+    x_train, y_train = split_train(train_data)
+
+    # parameters
+    INPUT_SIZE = x_train.shape[1]
+    HIDDEN_SIZE = [32, 32]
+    EPOCHS = 64
+    LR = 0.01
+    BATCH_SIZE = 128
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print('Using {} device'.format(device))
+
+    # Convert data sets
+    train_set = FFNeuralNetwork.prepare_datasets(x_train=x_train, y_train=y_train, batch_size=BATCH_SIZE)
+
+    # define model, model criterion and optimizer
+    nn_clf = FFNeuralNetwork.NN(input_size=INPUT_SIZE, hidden_size=HIDDEN_SIZE, num_classes=1).to(device)
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(nn_clf.parameters(), lr=LR)
+    history = nn_clf.fit(train_loader=train_set,
+                         criterion=criterion,
+                         optimizer=optimizer,
+                         epochs=EPOCHS, verbose=1)
+
+    return nn_clf, history
 
 
 def predict(m, fn):  # todo
@@ -529,7 +559,7 @@ def pre_process_main():
     test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
 
     ########### Data Understanding - plots and correlation ###############
-    data_understanding(train_data_fe)
+    # data_understanding(train_data_fe)
 
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
@@ -541,6 +571,12 @@ def pre_process_main():
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
 ########################################################################################################################
+
+def split_train(train_dataset):
+    y_train = train_dataset['label']
+    x_train = train_dataset.drop('label', axis=1)
+
+    return x_train, y_train
 
 ######### split for features and labels ############
 def read_and_split_data():
@@ -668,9 +704,10 @@ def rf_model(x_train, y_train):
 
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
-    pre_process_main()
-    X_train, Y_train, X_test = read_and_split_data()
+    # pre_process_main()
+    # X_train, Y_train, X_test = read_and_split_data()
 
     # logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
     # rf_model(X_train, Y_train)
+    train_best_model()

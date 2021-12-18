@@ -251,6 +251,28 @@ class LSTM(nn.Module):
 
         return train_acc, test_acc, test_prec, test_recall, test_auc, test_f1
 
+    def plot_acc_loss(self, history_dict):
+        """
+        Plots the accuracy and loss over training
+        :param history_dict: model training history
+        """
+        # accuracy plot
+        plt.plot(history_dict['accuracy'])
+        plt.plot(history_dict['val_accuracy'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'val'], loc='upper left')
+        plt.show()
+        # loss plot
+        plt.plot(history_dict['loss'])
+        plt.plot(history_dict['val_loss'])
+        plt.title('model loss')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'val'], loc='upper left')
+        plt.show()
+
 
 def lstm(train_lengths, val_lengths, train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim,
          num_hidden_nodes,
@@ -376,6 +398,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
                                      size_of_vocab=params['VOCAB_SIZE'][0], embedding_dim=params['EMBEDDING_DIM'][0],
                                      num_hidden_nodes=h_n, num_output_nodes=1, num_layers=l_n, directional=direction,
                                      dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
+            lstm_clf.plot_acc_loss(history)
             # evaluate on the validation
             acc = lstm_clf.evaluate(len_train, len_val, x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
             # append results of the fold
@@ -551,7 +574,7 @@ best_params = {'BATCH_SIZE': [16],
                'BIDIRECTIONAL': [True],
                'DROPOUT': [0.2],
                'LR': [0.01],
-               'EPOCHS': [2]
+               'EPOCHS': [10]
                }
 
 lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=best_params,
