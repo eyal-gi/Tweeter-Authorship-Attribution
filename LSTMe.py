@@ -21,7 +21,6 @@ import numpy as np
 import pandas as pd
 import math
 import re
-
 # nltk.download('stopwords')
 
 
@@ -483,15 +482,18 @@ def make_embedding(clean_data):
     :return: embedding matrix of our tweets
     """
 
-    TEXT = Field(sequential=True, batch_first=True, include_lengths=False, fix_length=24)
+
+    TEXT = Field(sequential=True, batch_first=True, include_lengths=True, fix_length=24 )
     data = list(map(TEXT.preprocess, clean_data))
     data = TEXT.pad(data)
-    TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
+    TEXT.build_vocab(data[0], vectors='glove.twitter.27B.100d')
     vocab_size = len(TEXT.vocab)
-    data_for_embedding = TEXT.numericalize(data)
+    # data_for_embedding , length = TEXT.numericalize(data)
+    # print(data_for_embedding , length)
+
     embedding_vectors = TEXT.vocab.vectors
 
-    return data_for_embedding, embedding_vectors, vocab_size
+    return  embedding_vectors, vocab_size, TEXT
 
 
 ####### read and make data to preprocessing #######
@@ -501,8 +503,7 @@ X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding
 
 X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
 ############### make embedding #################
-
-data_for_lstm, embedding_vectors, vocab_size = make_embedding(X_emb_clean_train)
+embedding_vectors ,vocab_size , TEXT = make_embedding(X_emb_clean_train)
 
 params = {'BATCH_SIZE': [32],
           'VOCAB_SIZE': [vocab_size],
@@ -516,4 +517,4 @@ params = {'BATCH_SIZE': [32],
           'EPOCHS': [1]
           }
 
-lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
+# lstm_tuning(data_for_lstm, Y_embedding_train, params, embedding_vectors)
