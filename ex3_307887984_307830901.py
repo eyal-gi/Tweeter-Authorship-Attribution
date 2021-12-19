@@ -2,6 +2,7 @@ import csv
 import nltk
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
     GridSearchCV, RandomizedSearchCV
@@ -20,6 +21,9 @@ import copy
 import math
 import calendar
 import torch
+import FFNeuralNetwork
+import torch.nn as nn
+import torch.optim as optim
 
 # put in comments (imports for data understanding and hyper parameters tuning
 from dython import nominal
@@ -35,12 +39,39 @@ from tabulate import tabulate
 # --------------------------------------- Data Understanding & Pre Processing ----------------------------------------#
 ########################################################################################################################
 
-def load_best_model():  # todo
+def load_best_model():  #
+    # todo : load pickle
     pass
 
 
-def train_best_model():  # todo
-    pass
+def train_best_model():
+    print("Training best model (ANN)")
+    # load data
+    train_data, test_data = pre_process_main()
+    x_train, y_train = split_train(train_data)
+
+    # parameters
+    INPUT_SIZE = x_train.shape[1]
+    HIDDEN_SIZE = [32, 32]
+    EPOCHS = 64
+    LR = 0.01
+    BATCH_SIZE = 128
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print('Using {} device'.format(device))
+
+    # Convert data sets
+    train_set = FFNeuralNetwork.prepare_datasets(x_train=x_train, y_train=y_train, batch_size=BATCH_SIZE)
+
+    # define model, model criterion and optimizer
+    nn_clf = FFNeuralNetwork.NN(input_size=INPUT_SIZE, hidden_size=HIDDEN_SIZE, num_classes=1).to(device)
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(nn_clf.parameters(), lr=LR)
+    history = nn_clf.fit(train_loader=train_set,
+                         criterion=criterion,
+                         optimizer=optimizer,
+                         epochs=EPOCHS, verbose=1)
+
+    return nn_clf, history
 
 
 def predict(m, fn):  # todo
@@ -501,7 +532,7 @@ def feature_selection(df, test_flag=False):
         final_df = final_df.drop('VBZ', axis=1)
         final_df = final_df.drop('VBD', axis=1)
 
-        final_df.to_csv('train_df.csv', index=False)
+        # final_df.to_csv('train_df.csv', index=False)
 
     else:
         final_df = final_df.drop('user', axis=1)
@@ -514,7 +545,7 @@ def feature_selection(df, test_flag=False):
         final_df = final_df.drop('VBZ', axis=1)
         final_df = final_df.drop('VBD', axis=1)
 
-        final_df.to_csv('test_df.csv', index=False)
+        # final_df.to_csv('test_df.csv', index=False)
 
     return final_df
 
@@ -541,6 +572,12 @@ def pre_process_main():
 # ----------------------------------------------------- Models -------------------------------------------------------#
 ########################################################################################################################
 
+def split_train(train_dataset):
+    y_train = train_dataset['label']
+    x_train = train_dataset.drop('label', axis=1)
+
+    return x_train, y_train
+
 ######### split for features and labels ############
 def read_and_split_data():
     """
@@ -556,10 +593,11 @@ def read_and_split_data():
 
 def kfold_validation(clf, x_train, y_train):
     cv = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
-    scores = cross_validate(estimator=clf, X=x_train, y=y_train, scoring='accuracy', cv=cv,
+    scores = cross_validate(estimator=clf, X=x_train, y=y_train,
+                            scoring=['accuracy', 'precision', 'recall', 'roc_auc', 'f1'], cv=cv,
                             return_train_score=True)  # score for model without hyper parameters tuning.
     print(
-        f"Validation Accuracy: {'{:.3}'.format(np.mean(scores['test_score']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_score']))}")
+        f"Validation:: Accuracy: {'{:.3}'.format(np.mean(scores['test_accuracy']))} | Precision: {'{:.3}'.format(np.mean(scores['test_precision']))} Recall: {'{:.3}'.format(np.mean(scores['test_recall']))} AUC: {'{:.3}'.format(np.mean(scores['test_roc_auc']))} F1: {'{:.3}'.format(np.mean(scores['test_f1']))} \nTrain Accuracy: {'{:.3}'.format(np.mean(scores['train_accuracy']))}")
 
     return cv
 
@@ -597,6 +635,8 @@ def param_random_tuning(clf, x_train, y_train, params_grid, cv, n_iter):
 def svm_model(x_train, y_train):
     print('SVM classifier')
     svm_clf = svm.SVC(random_state=42)  # basic model
+    svm_clf = svm.SVC(kernel='rbf', C=1, gamma=10,random_state=1)  # chosen non-linear model
+    svm_clf = svm.SVC(kernel='linear', C=0.01, random_state=1)  # chosen linear model
     cv = kfold_validation(svm_clf, x_train, y_train)
     param_grid = {'C': [0.01, 0.1, 0.5, 1, 5, 10, 100],
                   'kernel': ['linear', 'rbf', 'poly'],
@@ -625,6 +665,8 @@ def logistic_regression_model(x_train, y_train):
 def rf_model(x_train, y_train):
     print('Random Forest classifier')
     rf_clf = RandomForestClassifier(random_state=42)  # basic model
+    rf_clf = RandomForestClassifier(n_estimators=600, criterion='gini', max_depth=8, max_features='sqrt',
+                                    min_samples_leaf=4, min_samples_split=2, random_state=1)  # chosen model
     cv = kfold_validation(rf_clf, x_train, y_train)
 
     # #-----Params-----#
@@ -646,12 +688,12 @@ def rf_model(x_train, y_train):
     # param_random_tuning(rf_clf, x_train, y_train, param_grid, cv, 200)
 
     # #____ Fine Tuning _____#
-    max_depth = list(range(50, 70, 2))
+    max_depth = list(range(2, 12, 2))
     max_depth.append(None)
-    param_grid = {'n_estimators': [636],
+    param_grid = {'n_estimators': [600],
                   'criterion': ['gini'],
-                  'max_depth': max_depth,
-                  'min_samples_split': [1, 2, 3, 4, 5, 6],
+                  'max_depth': [8],
+                  'min_samples_split': [2],
                   'min_samples_leaf': [4],
                   'max_features': ["sqrt"],
                   'bootstrap': [False]}
@@ -663,8 +705,9 @@ def rf_model(x_train, y_train):
 if __name__ == '__main__':
     pd.set_option('display.max_columns', None)
     # pre_process_main()
-    X_train, Y_train, X_test = read_and_split_data()
+    # X_train, Y_train, X_test = read_and_split_data()
 
-    logistic_regression_model(X_train, Y_train)
+    # logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
     # rf_model(X_train, Y_train)
+    train_best_model()
