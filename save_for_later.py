@@ -1,21 +1,42 @@
-from tabulate import tabulate
-from itertools import product
+import ex3_307887984_307830901 as ex3
+import nltk
+from nltk import TweetTokenizer
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F  # RelU, tanh
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, Dataset
-import ex3_307887984_307830901 as ex3
+from torch.nn.utils.rnn import pad_sequence
+from torchtext.legacy.data import Field, LabelField, BucketIterator, TabularDataset
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.metrics import confusion_matrix, classification_report
+import spacy
+import string
+import pickle
+from tabulate import tabulate
+from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import math
+import re
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('Using {} device'.format(device))
+# nltk.download('stopwords')
+
+
+# training_data = ex3.read_data('trump_train.tsv')
+# training_data = training_data[['tweet', 'label']]
+#
+# TEXT = Field(tokenize='moses', batch_first=True, include_lengths=True)
+# # LABEL = LabelField(dtype=torch.float, batch_first=True)
+#
+# fields = [('tweet', TEXT), ('label', LABEL)]
+#
+# train_data_, valid_data_ = training_data.split(split_ratio=0.7, random_state=1)
+
+# check whether cuda is available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class ConvertDataset(Dataset):
@@ -36,205 +57,313 @@ class ConvertDataset(Dataset):
         return len(self.x)
 
 
-class NN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes, dropout_p):
-        super(NN, self).__init__()
-        # Fully connected layers
-        self.fc1 = nn.Linear(input_size, hidden_size[0])
-        self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc_out = nn.Linear(hidden_size[1], num_classes)
-        # Activation, dropout, batch-normalization layers
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=dropout_p)
-        self.batchnorm1 = nn.BatchNorm1d(hidden_size[0])
-        self.batchnorm2 = nn.BatchNorm1d(hidden_size[1])
+class LSTM(nn.Module):
 
-    def forward(self, inputs):
-        x = self.relu(self.fc1(inputs))
-        # x = self.batchnorm1(x)
-        x = self.relu(self.fc2(x))
-        # x = self.batchnorm2(x)
-        # x = self.dropout(x)
-        out = self.fc_out(x)
+    # define all the layers used in model
+    def __init__(self, vocab_size_, embedding_dim, hidden_dim, output_dim, n_layers,
+                 bidirectional, dropout):
+        # Constructor
+        super().__init__()
 
-        return out
+        # embedding layer
+        self.embedding = nn.Embedding(num_embeddings=vocab_size_, embedding_dim=embedding_dim)
 
-    def fit(self, train_loader, criterion, optimizer, epochs, validation_loader=None, verbose=0):
-        history = {'accuracy': [0],
-                   'val_accuracy': [0],
-                   'loss': [1],
-                   'val_loss': [1]
+        # lstm layer
+        self.lstm = nn.LSTM(embedding_dim,
+                            hidden_dim,
+                            num_layers=n_layers,
+                            bidirectional=bidirectional,
+                            dropout=dropout,
+                            batch_first=True)
+
+        # dense layer
+        self.fc = nn.Linear(hidden_dim, output_dim)
+
+        # activation function
+        self.act = nn.Sigmoid()
+
+    def forward(self, text, text_lengths):
+        # ## text = [batch size,sent_length]
+        embedded = self.embedding(text)
+        # ## embedded = [batch size, sent_len, emb dim]
+
+        # ## packed sequence
+        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, text_lengths, batch_first=True)
+
+        packed_output, (hidden, cell) = self.lstm(packed_embedded)
+        # ## hidden = [batch size, num layers * num directions,hid dim]
+        # ## cell = [batch size, num layers * num directions,hid dim]
+
+        # ## concat the final forward and backward hidden state
+        hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+
+        # ## hidden = [batch size, hid dim * num directions]
+        dense_outputs = self.fc(hidden)
+
+        # ## Final activation function
+        outputs = self.act(dense_outputs)
+
+        return outputs
+
+    def summary(self):
+        # architecture
+        print(self)
+
+        # No. of trianable parameters
+        def count_parameters(model):
+            return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+        print(f'The model has {count_parameters(self):,} trainable parameters')
+
+    def fit(self, train_iterator, val_iterator, optimizer, criterion, epochs=8, verbose=0):
+        history = {'accuracy': [], 'val_accuracy': [],
+                   'loss': [], 'val_loss': []
                    }
-        # training loop
-        self.train()
+
+        best_valid_loss = float('inf')
+
         # run through all epochs
         for epoch in range(1, epochs + 1):
-            # initiate train, validation loss and accuracy for each epoch
-            epoch_loss, epoch_acc, val_epoch_loss, val_epoch_acc = 0, 0, 0, 0
-            # run through the batches
-            for X_batch, y_batch in train_loader:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            # train the model
+            train_loss, train_acc = self._train(train_iterator, optimizer, criterion)
+            print(f'epoch train acc: {train_acc}')
+            # evaluate the model
+            valid_loss, valid_acc = self._evaluate(val_iterator, criterion)
+            print(f'epoch val acc: {valid_acc}')
 
-                # forward
-                y_pred = self(X_batch)  # predict based on X
-                loss = criterion(y_pred, y_batch.unsqueeze(1))  # loss based on predicted vs ground truth
-                acc = self._binary_acc(y_pred, y_batch.unsqueeze(1))
+            history['accuracy'].append(train_acc)
+            history['loss'].append(train_loss)
+            history['val_accuracy'].append(valid_acc)
+            history['val_loss'].append(valid_loss)
 
-                optimizer.zero_grad()
-                # backwards
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item()
-                epoch_acc += acc.item()
-            if validation_loader:
-                for X_batch, y_batch in validation_loader:
-                    X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-                    y_pred = self(X_batch)
-                    loss = criterion(y_pred, y_batch.unsqueeze(1))
-                    acc = self._binary_acc(y_pred, y_batch.unsqueeze(1))
-
-                    val_epoch_loss += loss.item()
-                    val_epoch_acc += acc.item()
-
-                history['val_accuracy'].append(val_epoch_acc / len(validation_loader))
-                history['val_loss'].append(val_epoch_loss / len(validation_loader))
-
-            history['accuracy'].append(epoch_acc / len(train_loader))
-            history['loss'].append(epoch_loss / len(train_loader))
+            # # save the best model
+            # if valid_loss < best_valid_loss:
+            #     best_valid_loss = valid_loss
+            #     torch.save(self.state_dict(), 'saved_weights.pt')
 
             if verbose == 1:
                 print(
-                    f'Epoch {epoch}/{epochs}\n[=================] - loss: {epoch_loss / len(train_loader):.5f} - accuracy: {epoch_acc / len(train_loader):.4f} - val_loss: {val_epoch_loss / len(validation_loader):.5f} - val_accuracy: {val_epoch_acc / len(validation_loader):.4f}')
+                    f'Epoch {epoch}/{epochs}\n[=================] - loss: {train_loss:.5f} - accuracy: {train_acc:.4f} - val_loss: {valid_loss:.5f} - val_accuracy: {valid_acc:.4f}')
 
+        # return history = {'accuracy': epochs_accuracy_list, 'loss': epochs_loss_list}
         return history
 
-    def _binary_acc(self, y_pred, y_test):
-        y_pred_tag = torch.round(torch.sigmoid(y_pred))
+    def _train(self, iterator, optimizer, criterion):
+        self.train()  # model.train() indicates the model this is model training
+        # initiate train loss and accuracy for each epoch
+        epoch_loss, epoch_acc = 0, 0
 
+        for x_batch, labels in iterator:
+            # resets the gradients after every batch
+            optimizer.zero_grad()
+
+            # retrieve text and no. of words
+            # text, text_lengths = batch.text
+
+            # convert to 1D tensor
+            predictions = self(x_batch)
+
+            # compute the loss
+            loss = criterion(predictions, labels.unsqueeze(1))
+
+            # compute the binary accuracy
+            acc = self._binary_acc(predictions, labels.unsqueeze(1))
+
+            # backpropagation the loss and compute the gradients
+            loss.backward()
+
+            # update the weights
+            optimizer.step()
+
+            # loss and accuracy
+            epoch_loss += loss.item()
+            epoch_acc += acc.item()
+
+        # return (train_loss, train_acc)
+        return epoch_loss / len(iterator), epoch_acc / len(iterator)
+
+    def _evaluate(self, iterator, criterion):
+        # deactivating dropout layers
+        self.eval()
+        # initiate validation loss and accuracy for each epoch
+        epoch_loss, epoch_acc = 0, 0
+
+        # deactivates autograd
+        with torch.no_grad():
+            for x_batch, labels in iterator:
+                # retrieve text and no. of words
+                # text, text_lengths = batch.text
+
+                # convert to 1d tensor
+                # predictions = self(text, text_lengths).squeeze()
+                predictions = self(x_batch)
+
+                # compute loss and accuracy
+                loss = criterion(predictions, labels.unsqueeze(1))
+                acc = self._binary_acc(predictions, labels.unsqueeze(1))
+
+                # keep track of loss and accuracy
+                epoch_loss += loss.item()
+                epoch_acc += acc.item()
+
+        # return (val_loss, val_acc)
+        return epoch_loss / len(iterator), epoch_acc / len(iterator)
+
+    def _binary_acc(self, y_pred, y_test):
+        """
+        Returns accuracy for binary classification
+        :param y_pred: model predictions
+        :param y_test: Ground truth (list)
+        :return: float -> the accuracy
+        """
+        y_pred_tag = torch.round(y_pred)
         correct_results_sum = (y_pred_tag == y_test).sum().float()
         acc = correct_results_sum / y_test.shape[0]
-        # acc = torch.round(acc * 100)
 
         return acc
 
     def evaluate(self, x_train, x_test, y_train, y_test):
+        """
+        Evaluate the model on a test set and returns the train and test accuracy.
+        :param x_train: np.array of train data
+        :param x_test: np.array of train labels
+        :param y_train: np.array of test data
+        :param y_test: np.array of test labels
+        :return:
+        """
         # evaluation
-        self.eval()
-        train_predicted = self(torch.tensor(x_train, dtype=torch.float32))
-        train_predicted = torch.sigmoid(train_predicted)
+        self.eval()  # model.eval() indicates the model this is model eval
+        train_predicted = self(x_train)
+        # train_predicted = train_predicted
         train_acc = (train_predicted.reshape(-1).detach().numpy().round() == y_train).mean()
 
-        test_predicted = self(torch.tensor(x_test, dtype=torch.float32))
-        test_predicted = torch.sigmoid(test_predicted)
+        test_predicted = self(x_test)
+        # test_predicted = test_predicted
         test_acc = (test_predicted.reshape(-1).detach().numpy().round() == y_test).mean()
-
-        # print(f'train accuracy = {train_acc:.3f}, test accuracy = {test_acc:.3f}')
 
         return train_acc, test_acc
 
-    # def evaluate(self, train_loader, test_loader, y_test):
-    #     # evaluation
-    #     y_pred_list = []
-    #     train_y_pred_list = []
-    #     self.eval()
-    #     with torch.no_grad():
-    #         for X_batch in test_loader:
-    #             X_batch = X_batch.to(device)
-    #             y_test_pred = self(X_batch)
-    #             y_test_pred = torch.sigmoid(y_test_pred)
-    #             y_pred_tag = torch.round(y_test_pred)
-    #             y_pred_list.append(y_pred_tag.cpu().numpy())
-    #
-    #     with torch.no_grad():
-    #         for X_batch, y_batch in train_loader:
-    #             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-    #             y_train_pred = self(X_batch)
-    #             train_acc = self._binary_acc(y_train_pred, y_batch.unsqueeze(1))
-    #
-    #     y_pred_list = [a.squeeze().tolist() for a in y_pred_list]
-    #     test_acc = (y_pred_list == y_test).sum().item() / len(test_loader.dataset)
-    #
-    #     print(f'train accuracy = {train_acc:.3f}, test accuracy = {test_acc:.3f}')
-    #
-    #     return train_acc, test_acc
 
-    def plot_acc_loss(self, history_dict):
-        # accuracy plot
-        plt.plot(history_dict['accuracy'])
-        plt.plot(history_dict['val_accuracy'])
-        plt.title('model accuracy')
-        plt.ylabel('accuracy')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'val'], loc='upper left')
-        plt.show()
-        # loss plot
-        plt.plot(history_dict['loss'])
-        plt.plot(history_dict['val_loss'])
-        plt.title('model loss')
-        plt.ylabel('loss')
-        plt.xlabel('epoch')
-        plt.legend(['train', 'val'], loc='upper left')
-        plt.show()
+def lstm(train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim, num_hidden_nodes,
+         num_output_nodes, num_layers, directional, dropout, learning_rate, epochs, pretrained_embeddings):
+    # # Load an iterator
+    train_iterator, valid_iterator = prepare_datasets(train_data, y_train, valid_data, y_val, batch_size)
+
+    # instantiate the model
+    model = LSTM(size_of_vocab, embedding_dim, num_hidden_nodes, num_output_nodes, num_layers,
+                 bidirectional=directional, dropout=dropout)
+    # model.summary()
+
+    # Initialize the pretrained embedding
+    model.embedding.weight.data.copy_(pretrained_embeddings)
+
+    # print(pretrained_embeddings.shape)
+
+    # define optimizer and loss
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.BCELoss()
+
+    # push to cuda if available
+    model, criterion = model.to(device), criterion.to(device)
+    history = model.fit(train_iterator=train_iterator,
+                        val_iterator=valid_iterator,
+                        optimizer=optimizer,
+                        criterion=criterion,
+                        epochs=epochs,
+                        verbose=1)
+
+    return model, history
 
 
-# # ###########____________________________________________________________________###################################
+def prepare_datasets(x_train, y_train, x_validation, y_validation, batch_size):
+    """
+    Converts DataFrames to DataLoaders
+    :param x_train: train dataframe
+    :param y_train: train labels dataframe
+    :param x_validation: test/validation dataframe
+    :param y_validation: validation labels dataframe
+    :param batch_size: Batch size (int)
+    :return: train and test/validation DataLoaders
+    """
 
-# Model's Parameters
-input_size_ = 15
-hidden_size_ = [16, 16]
-num_classes_ = 1
-num_epochs_ = 16
-batch_size_ = 128
-learning_rate_ = 0.1
+    # convert dataframe to numpy arrays
+    y_train = y_train.to_numpy()
+    y_validation = y_validation.to_numpy()
 
-# Load Datasets
-X_train, Y_train, X_test = ex3.read_and_split_data()
+    #  Convert to torch Datasets
+    train_dataset = ConvertDataset(x=x_train,
+                                   y=torch.FloatTensor(y_train),
+                                   train=True)
+    validation_dataset = ConvertDataset(x=x_validation,
+                                        y=torch.FloatTensor(y_validation),
+                                        train=True)
+
+    # Create DataLoaders
+    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+    validation_loader = DataLoader(dataset=validation_dataset, batch_size=batch_size, shuffle=True)
+
+    return train_loader, validation_loader
 
 
-def ann_tuning(X, y, params):
+def kfold_tuning(X, y, labels, params, embeddings):
+    """
+    Performs a 10-Fold validation over given parameters and returns a DataFrame of the results.
+    :param embeddings:
+    :param X: Train samples (DataFrame)
+    :param y: Train labels (DataFrame)
+    :param params: Dictionary of parameters.
+    :return: Results data frame
+    """
     skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
+
+    # initialize results lists
     tuning_params = []
     tuning_train_acc = []
     tuning_val_acc = []
 
+    # counts number of tuning options
     options = 1
     for p in params:
         options = options * len(params[p])
     print(f'{options} Options -> {10 * options} iterations')
 
+    # loop through all possible combinations
     param_values = [v for v in params.values()]
-    for i_s, h_s, c, e, b_s, lr, d_p in product(*param_values):
+    i = 1  # index of current iteration
+    for b_s, e_d, h_n, o_n, l_n, direction, dropout, lr, e in product(*param_values):
         print(
-            f'Tuning parameters-> input_size:{i_s} | hidden_size:{h_s} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr} | dropout_p:{d_p}'
+            f'{i}/{options} Tuning parameters-> | hidden_size:{h_n} | epochs:{e} | batch_size:{b_s} | learning_rate:{lr} | layers_num:{l_n} | dropout:{dropout} | bidirectional:{direction}'
         )
+        i += 1
 
-        nn_clf = NN(input_size=i_s, hidden_size=h_s, num_classes=c, dropout_p=d_p).to(device)
+        # initiates cross-validation results
         cv_train_acc = []
-        cv_train_loss = []
         cv_val_acc = []
-        cv_val_loss = []
+        # loop through the folds
+        f = 1
         for train_index, test_index in skf.split(X, y):
-            x_train, x_val = X.iloc[train_index], X.iloc[test_index]
-            y_train, y_val = y.iloc[train_index], y.iloc[test_index]
-            train_set, val_set = prepare_datasets(x_train, y_train, x_val, b_s)
+            print(f)
+            f = f + 1
+            x_train, x_val = X[train_index], X[test_index]
+            y_train, y_val = y[train_index], y[test_index]
 
-            criterion = nn.BCEWithLogitsLoss()
-            optimizer = optim.Adam(nn_clf.parameters(), lr=lr)
-
-            nn_clf.fit(train_loader=train_set,
-                       criterion=criterion,
-                       optimizer=optimizer,
-                       epochs=e)
-
-            acc = nn_clf.evaluate(x_train.to_numpy(), x_val.to_numpy(), y_train.to_numpy(),
-                                  y_val.to_numpy())
+            # initiate the neural network
+            lstm_clf, history = lstm(train_data=x_train, valid_data=x_val, y_train=y_train, y_val=y_val, batch_size=b_s,
+                                     epochs=e,
+                                     size_of_vocab=params['VOCAB_SIZE'][0], embedding_dim=params['EMBEDDING_DIM'][0],
+                                     num_hidden_nodes=h_n, num_output_nodes=1, num_layers=l_n, directional=direction,
+                                     dropout=dropout, learning_rate=lr, pretrained_embeddings=embeddings)
+            # evaluate on the validation
+            acc = lstm_clf.evaluate(x_train, x_val, y_train.to_numpy(), y_val.to_numpy())
+            print(f'fold accuracy (train, val): {acc}')
+            # append results of the fold
             cv_train_acc.append(acc[0])
             cv_val_acc.append(acc[1])
         print(f'train_acc: {np.mean(cv_train_acc):.3f}, val_acc:{np.mean(cv_val_acc):.3f}')
-        iter_params = {'input_size': i_s, 'hidden_size': h_s, 'classes': c, 'epochs': e,
-                       'batch_size': b_s, 'learning_rate': lr, 'dropout_p': d_p}
+        iter_params = {'hidden_size': h_n, 'hidden_size': h_n, 'epochs': e,
+                       'batch_size': b_s, 'learning_rate': lr, 'layers_num': l_n, 'dropout': dropout,
+                       'bidirectional': direction}
+        # append results of the iteration
         tuning_params.append(iter_params)
         tuning_val_acc.append(np.mean(cv_val_acc))
         tuning_train_acc.append(np.mean(cv_train_acc))
@@ -243,94 +372,157 @@ def ann_tuning(X, y, params):
     return cv_results
 
 
-def prepare_datasets(x_train, y_train, x_validation, batch_size):
-    x_train = x_train.to_numpy()
-    x_validation = x_validation.to_numpy()
-    y_train = y_train.to_numpy()
+def lstm_tuning(x_train, y_train, labels, params_grid, embedding_vector):
+    """
+    Preforms parameters tuning on the ann
+    :param x_train: train data frame
+    :param y_train: train labels data frame
+    :param params_grid: tuning parameters (dictionary)
+    :return: Best model
+    """
+    results = kfold_tuning(X=x_train, y=y_train, labels=labels, params=params_grid, embeddings=embedding_vector)
+    # convert dictionary to DataFrame
+    results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
+    # print table
+    headers = ['Parameters', 'Validation score', 'Train score']
+    print(tabulate(results.head(10), headers=headers, tablefmt='grid'))
 
-    #  Convert datasets
-    train_dataset = ConvertDataset(x=torch.FloatTensor(x_train),
-                                   y=torch.FloatTensor(y_train),
-                                   train=True)
-    validation_dataset = ConvertDataset(x=torch.FloatTensor(x_validation),
-                                        train=False)
-
-    # Create DataLoaders
-    train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-    validation_loader = DataLoader(dataset=validation_dataset, batch_size=1, shuffle=True)
-
-    return train_loader, validation_loader
+    return results.head(1)
 
 
-params_grid = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[16, 16], [32, 32], [64, 64], [128, 128], [256, 256]],
-               'CLASSES': [1],
-               'EPOCHS': [8, 16, 32, 64],
-               'BATCH_SIZE': [16, 32, 64, 128],
-               'LR': [0.001, 0.01, 0.1],
-               'DROPOUT_P': [0.1, ]
-               }
+################################### Prepare data and make Embeddings for LSTM ########################################
 
-params_grid = {'INPUT_SIZE': [X_train.shape[1]],
-               'HIDDEN_SIZE': [[16, 16], [32, 32]],
-               'CLASSES': [1],
-               'EPOCHS': [8, 16],
-               'BATCH_SIZE': [128],
-               'LR': [0.1],
-               'DROPOUT_P': [0.1]
-               }
+def read_data_for_embedding():
+    """
+    The function reads the data and turns it into a dataframe of - label tweet only.
+    """
+    #### train data ####
+    train_data = ex3.read_data('trump_train.tsv')  # read train data
+    train_embed_data = train_data.drop(['id', 'user', 'time', 'device'], axis=1)
+    # x_train = train_embed_data.drop('label', axis=1)
+    y_train = train_embed_data['label']
 
-# results = ann_tuning(X=X_train, y=Y_train, params=params_grid)
-# results = pd.DataFrame(results).sort_values('mean_test_score', ascending=False)
-# headers = ['Parameters', 'Validation score', 'Train score']
-# print(tabulate(results.head(), headers=headers, tablefmt='grid'))
+    ###### test data ####
+    test_data = ex3.read_data('trump_test.tsv', True)  # read test data
+    x_test = test_data.drop(['user', 'time'], axis=1)
 
-# ####################################################################################################################
-# ####################################################################################################################
-# ####################################################################################################################
-# ####################################################################################################################
-# # ###########____________________________________________________________________###################################
-x_train_, x_validation_, y_train_, y_validation_ = train_test_split(X_train, Y_train, test_size=0.1, random_state=42)
+    return train_embed_data, x_test
 
-x_train_ = x_train_.to_numpy()
-x_validation_ = x_validation_.to_numpy()
-y_train_ = y_train_.to_numpy()
-y_validation_ = y_validation_.to_numpy()
 
-#  Convert datasets
-train_dataset_ = ConvertDataset(x=torch.FloatTensor(x_train_), y=torch.FloatTensor(y_train_), train=True)
-validation_dataset_ = ConvertDataset(x=torch.FloatTensor(x_validation_), y=torch.FloatTensor(y_validation_), train=True)
-validation_test_dataset_ = ConvertDataset(x=torch.FloatTensor(x_validation_), train=False)
-# test_dataset = ConvertDataset(x=X_test.values)
+def preprocess_tweets_for_embedding(x_emb_train):
+    """
+    This function get the train data, clean and normalized the tweets before make embedding:
+    Lower case
+    Removing urls
+    Removing hashtags
+    Removing punctuation
+    Removing stop words
+    Removing stock-market symbols
 
-# Create DataLoaders
-train_loader_ = DataLoader(dataset=train_dataset_, batch_size=batch_size_, shuffle=True)
-validation_loader_ = DataLoader(dataset=validation_dataset_, batch_size=batch_size_, shuffle=True)
-validation_test_loader_ = DataLoader(dataset=validation_test_dataset_, batch_size=1, shuffle=False)
-# # todo: test_loader?
-# # ###########____________________________________________________________________###################################
-#
-#
-# # ###########____________________________________________________________________###################################
-# Initiate model
-nn_model = NN(input_size=input_size_, hidden_size=hidden_size_, num_classes=num_classes_, dropout_p=0.3).to(device)
+    :param x_emb_train: DataFrame of the train data , contain the tweets
+    :return: Dataframe with clean tweets.
+    """
+    clean_tweets = []
+    for tweet in x_emb_train['tweet']:
+        tweet_lower_case = tweet.lower()  # tweet to lowercase
+        remove_stock_market_symbols = re.sub(r'\$\w*', '', tweet_lower_case)  # remove stock-market
+        remove_hashtags = re.sub(r'#', '', remove_stock_market_symbols)  # remove hashtag
+        remove_url = re.sub(r'https?:\/\/.*[\r\n]*', '', remove_hashtags)  # remove urls
+        remove_sw = remove_stop_words(remove_url)  # remove stopwords
+        remove_punc = remove_punctuation(remove_sw)  # remove punctuation
+        tweet_tokenize = TweetTokenizer(strip_handles=True, reduce_len=True)
+        tweet_tokens_list = tweet_tokenize.tokenize(remove_punc)
+        clean_tweet = tweet_tokens_list
 
-# loss and optimizer
-criterion_ = nn.BCEWithLogitsLoss()
-optimizer_ = optim.Adam(nn_model.parameters(), lr=learning_rate_)
+        clean_tweets.append(clean_tweet)
 
-history_ = nn_model.fit(train_loader=train_loader_,
-                        criterion=criterion_,
-                        optimizer=optimizer_, epochs=num_epochs_,
-                        validation_loader=validation_loader_, verbose=1)
-# nn_model.evaluate(train_loader=train_loader_, test_loader=validation_test_loader_, y_test=y_validation_)
-print(nn_model.evaluate(x_train=x_train_, y_train=y_train_, x_test=x_validation_, y_test=y_validation_))
-#
-#
-# ########### report ###############
-# # print(confusion_matrix(y_validation, y_pred_list))
-# # print(classification_report(y_validation, y_pred_list))
-# #         n_samples += labels.shape[0]
-# #         n_correct += (outputs == labels).sum().item()
-# #
-# # ###########____________________________________________________________________###################################
+    dic = {'tweets': clean_tweet, 'labels': x_emb_train['labels']}
+    return pd.DataFrame(dic)
+
+
+def remove_stop_words(tweet):
+    """
+    This function remove stopwords from tweet
+    :param tweet: str for clean
+    :return: clean tweet
+    """
+    STOPWORDS = set(stopwords.words("english"))
+    tweet = " ".join(word for word in tweet.split() if word not in STOPWORDS)
+    return tweet
+
+
+def remove_punctuation(tweet):
+    """
+    This function remove punctuation from tweet
+    :param tweet: str for clean
+    :return: clean tweet
+    """
+    tweet = "".join(word for word in tweet if word not in set(string.punctuation))
+    return tweet
+
+
+########################### create the embeddings #################################
+
+
+def make_embedding(clean_data):
+    """
+    This function make embedding by using glove.twitter.27B.100d
+    :return: embedding matrix of our tweets
+    """
+
+    data = list(map(TEXT.preprocess, clean_data['tweets']))
+    data = TEXT.pad(data['tweets'])
+
+    TEXT.build_vocab(data, vectors='glove.twitter.27B.100d')
+    LABEL.build_vocab(clean_data)
+    vocab_size = len(TEXT.vocab)
+
+    # data_for_embedding = TEXT.numericalize(data)
+    # embedding_vectors = TEXT.vocab.vectors
+
+    return data_for_embedding, embedding_vectors, vocab_size
+
+
+####### read and make data to preprocessing #######
+# TODO make everything for the test too!
+
+emb_data, X_embedding_test = read_data_for_embedding()
+clean_train = preprocess_tweets_for_embedding(emb_data)
+
+############### make embedding #################
+
+# data_for_lstm, embedding_vectors, vocab_size = make_embedding(X_emb_clean_train)
+
+params = {'BATCH_SIZE': [32],
+          'EMBEDDING_DIM': [100],
+          'HIDDEN_NODES': [32],
+          'OUTPUT_NODES': [1],
+          'lAYERS_NUM': [2],
+          'BIDIRECTIONAL': [False],
+          'DROPOUT': [0.2],
+          'LR': [0.01],
+          'EPOCHS': [1]
+          }
+
+
+
+
+TEXT = data.Field(tokenize='spacy',batch_first=True,include_lengths=True)
+LABEL = data.LabelField(dtype = torch.float,batch_first=True)
+fields = [(None, None), ('text',TEXT),('label', LABEL)]
+training_data= Dataset(clean_train, fields)
+train-valid split
+train_data_ = list(map(TEXT.preprocess, clean_data))
+train_data_ = TEXT.pad(data)
+TEXT.build_vocab(train_data,vectors = "glove.6B.100d")
+LABEL.build_vocab(train_data)
+#Load an iterator
+train_iterator, valid_iterator = data.BucketIterator.splits(
+    (train_data, valid_data),
+    batch_size = BATCH_SIZE,
+    sort_key = lambda x: len(x.text),
+    sort_within_batch=True,
+    device = device)
+
+
+lstm_tuning(x_emb_train, y_emb_train, params, embedding_vectors)

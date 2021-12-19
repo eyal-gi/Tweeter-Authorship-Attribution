@@ -22,6 +22,10 @@ print('Using {} device'.format(device))
 
 
 class ConvertDataset(Dataset):
+    """
+        Create an instances of pytorch Dataset from a DataFrame.
+    """
+
     def __init__(self, x, y=None, train=False):
         # data loading
         self.train = train
@@ -195,7 +199,6 @@ class NN(nn.Module):
         predictions = predictions.reshape(-1).detach().numpy().round()
         return predictions
 
-
     def plot_acc_loss(self, history_dict):
         """
         Plots the accuracy and loss over training
@@ -283,7 +286,6 @@ def prepare_datasets(x_train, y_train, batch_size, x_validation=None, y_validati
 
     else:
         return train_loader
-
 
 
 def kfold_tuning(X, y, params):

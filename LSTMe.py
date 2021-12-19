@@ -22,22 +22,8 @@ import numpy as np
 import pandas as pd
 import math
 import re
-
-# nltk.download('stopwords')
-# nltk.download('wordnet')
-
-
-############ CHECK IF CAN DELETE !!! #######################
-# training_data = ex3.read_data('trump_train.tsv')
-# training_data = training_data[['tweet', 'label']]
-#
-# TEXT = Field(tokenize='moses', batch_first=True, include_lengths=True)
-# # LABEL = LabelField(dtype=torch.float, batch_first=True)
-#
-# fields = [('tweet', TEXT), ('label', LABEL)]
-#
-# train_data_, valid_data_ = training_data.split(split_ratio=0.7, random_state=1)
-############ CHECK IF CAN DELETE !!! #######################
+nltk.download('stopwords')
+nltk.download('wordnet')
 
 
 # check whether cuda is available
@@ -45,6 +31,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class ConvertDataset(Dataset):
+    """
+    Create an instances of pytorch Dataset from a DataFrame.
+    """
     def __init__(self, x, lengths, y=None, train=False):
         # data loading
         self.train = train
@@ -65,7 +54,10 @@ class ConvertDataset(Dataset):
 
 
 class LSTM(nn.Module):
-
+    """
+    Creates an instance of LSTM model.
+    Inner methods: model fit, model evaluation.
+    """
     # define all the layers used in model
     def __init__(self, vocab_size_, embedding_dim, hidden_dim, output_dim, n_layers,
                  bidirectional, dropout):
@@ -90,6 +82,12 @@ class LSTM(nn.Module):
         self.act = nn.Sigmoid()
 
     def forward(self, text, text_lengths):
+        """
+        Feed forward the inputs data to the network's layers
+        :param text: Input text
+        :param text_lengths: the text original length (before padding)
+        :return: predictions
+        """
         # ## text = [batch size,sent_length]
         embedded = self.embedding(text)
         # ## embedded = [batch size, sent_len, emb dim]
@@ -131,6 +129,18 @@ class LSTM(nn.Module):
         print(f'The model has {count_parameters(self):,} trainable parameters')
 
     def fit(self, train_iterator, val_iterator, optimizer, criterion, epochs=8, verbose=0):
+        """
+        Fits the model to a given train set. Can be fitted with validation set as well to see accuracy and loss
+        on validation throughout the training.
+        :param train_iterator: of type DataLaoder. The train data (with labels)
+        :param val_iterator: of type DataLaoder. Validation data (with labels)
+        :param optimizer: The optimizer to use (from pytorch functions)
+        :param criterion: The models criterion
+        :param epochs: Number of epochs to train on
+        :param verbose: Print data during training.
+        :return: history. a dictionary of the models accuracy and loss of both train and validation data
+                during the data fit.
+        """
         history = {'accuracy': [], 'val_accuracy': [],
                    'loss': [], 'val_loss': []
                    }
@@ -159,6 +169,13 @@ class LSTM(nn.Module):
         return history
 
     def _train(self, iterator, optimizer, criterion):
+        """
+        Runs the inputs through the model and does backpropagation to achieve best model.
+        :param iterator: Data iterator of type DataLoader
+        :param optimizer: Model optimizer
+        :param criterion: The criterion
+        :return: Epoch's train data accuracy and loss.
+        """
         self.train()  # model.train() indicates the model this is model training
         # initiate train loss and accuracy for each epoch
         epoch_loss, epoch_acc = 0, 0
@@ -193,6 +210,12 @@ class LSTM(nn.Module):
         return epoch_loss / len(iterator), epoch_acc / len(iterator)
 
     def _evaluate(self, iterator, criterion):
+        """
+        evaluates the validation during training.
+        :param iterator: data iterator
+        :param criterion: models criterion.
+        :return: The epochs validation accuracy and loss
+        """
         # deactivating dropout layers
         self.eval()
         # initiate validation loss and accuracy for each epoch
@@ -283,6 +306,28 @@ class LSTM(nn.Module):
 def lstm(train_lengths, val_lengths, train_data, valid_data, y_train, y_val, batch_size, size_of_vocab, embedding_dim,
          num_hidden_nodes,
          num_output_nodes, num_layers, directional, dropout, learning_rate, epochs, pretrained_embeddings):
+    """
+    This function gets data and models hyperparaetrs and create an instance of LSTM model, creates data
+    iterators from the given data and fit the model.
+    :param train_lengths: Train data vectors original lengths (before padding)
+    :param val_lengths: Validation data vectors original lengths (before padding)
+    :param train_data: Training data
+    :param valid_data: Validation data
+    :param y_train: train labels
+    :param y_val: validation labels
+    :param batch_size:  int
+    :param size_of_vocab: int
+    :param embedding_dim: int
+    :param num_hidden_nodes: int
+    :param num_output_nodes: int
+    :param num_layers: int
+    :param directional: bool
+    :param dropout: float
+    :param learning_rate: float
+    :param epochs: int
+    :param pretrained_embeddings:
+    :return: model, history
+    """
     # # Load an iterator
     train_iterator, valid_iterator = prepare_datasets(train_lengths, val_lengths, train_data, y_train, valid_data,
                                                       y_val, batch_size)
