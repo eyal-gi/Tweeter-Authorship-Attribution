@@ -190,6 +190,12 @@ class NN(nn.Module):
         conf_mat = confusion_matrix(y_test, test_predicted)
         return train_acc, test_acc, test_prec, test_recall, test_auc, test_f1, conf_mat
 
+    def predict(self, test):
+        predictions = self(torch.tensor(test, dtype=torch.float32))
+        predictions = predictions.reshape(-1).detach().numpy().round()
+        return predictions
+
+
     def plot_acc_loss(self, history_dict):
         """
         Plots the accuracy and loss over training
