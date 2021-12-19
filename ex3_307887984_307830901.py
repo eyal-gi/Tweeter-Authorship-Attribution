@@ -78,9 +78,9 @@ def train_best_model():
                          epochs=EPOCHS, verbose=0)
 
 
-    with open ('best_model.pkl', 'wb') as path:
-        pickle.dump(nn_clf, path)
-        path.close()
+    # with open ('best_model.pkl', 'wb') as path:
+    #     pickle.dump(nn_clf, path)
+    #     path.close()
 
     return nn_clf
 
