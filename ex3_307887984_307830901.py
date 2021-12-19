@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, cross_val_score, cross_validate, \
-    GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import StratifiedKFold, cross_validate, GridSearchCV, RandomizedSearchCV
 from sklearn import svm
 from sklearn.ensemble import RandomForestClassifier
 import pickle
@@ -29,7 +28,6 @@ import torch.optim as optim
 from dython import nominal
 from tabulate import tabulate
 
-
 # nltk.download('vader_lexicon')
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
@@ -40,14 +38,22 @@ from tabulate import tabulate
 ########################################################################################################################
 
 def load_best_model():  #
-    # todo : load pickle
-    pass
+    """
+    load best model from pkl file that is part of the submission - best_model.pkl
+    """
+    with open('best_model.pkl' , 'rb') as path:
+        best_model_ANN = pickle.load(path)
+        path.close()
+    return best_model_ANN
 
 
 def train_best_model():
+    """
+    This function train our best model - The ANN model.
+    """
     print("Training best model (ANN)")
     # load data
-    train_data, test_data = pre_process_main()
+    train_data = pre_process_main()
     x_train, y_train = split_train(train_data)
 
     # parameters
@@ -66,17 +72,31 @@ def train_best_model():
     nn_clf = FFNeuralNetwork.NN(input_size=INPUT_SIZE, hidden_size=HIDDEN_SIZE, num_classes=1).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(nn_clf.parameters(), lr=LR)
-    history = nn_clf.fit(train_loader=train_set,
+    nn_clf.fit(train_loader=train_set,
                          criterion=criterion,
                          optimizer=optimizer,
-                         epochs=EPOCHS, verbose=1)
-
-    return nn_clf, history
+                         epochs=EPOCHS, verbose=0)
 
 
-def predict(m, fn):  # todo
-    pass
+    with open ('best_model.pkl', 'wb') as path:
+        pickle.dump(nn_clf, path)
+        path.close()
 
+    return nn_clf
+
+
+def predict(m, fn):
+    """
+    :param m: the best model
+    :param fn: path for
+    :return: prediction for the test set
+    """
+    test_data = pre_process_test_set(fn) #prepare test data for prediction
+    predictions = m.predict(test_data.to_numpy()) # prediction on the test data
+    predictions = predictions.astype(int)
+    predictions = np.array2string(predictions.reshape(-1), separator=' ')[1:-1]
+    predictions = predictions.replace('\n' , '')
+    return predictions
 
 def read_data(data_name, test=False):
     """
@@ -554,19 +574,20 @@ def pre_process_main():
     ########### Train data - read and make features ###########
     train_data = read_data('trump_train.tsv')  # read train data
     train_data_fe = preliminary_feature_extraction(train_data)  # feature extraction for train data
-    ########### Test data - ead and make features ###########
-    test_data = read_data('trump_test.tsv', True)  # read test data
-    test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
-
     ########### Data Understanding - plots and correlation ###############
     # data_understanding(train_data_fe)
-
     ################# Feature Selection And Make Final Train and Test Df #################
     final_train_df = feature_selection(train_data_fe)
+
+    return final_train_df
+
+def pre_process_test_set(path_for_test_data):
+    ########### Test data - read and make features ###########
+    test_data = read_data(path_for_test_data, True)  # read test data
+    test_data_fe = preliminary_feature_extraction(test_data)  # feature extraction for train data
+    ################# Feature Selection And Make Final Train and Test Df #################
     final_test_df = feature_selection(test_data_fe, True)
-
-    return final_train_df, final_test_df
-
+    return final_test_df
 
 ########################################################################################################################
 # ----------------------------------------------------- Models -------------------------------------------------------#
@@ -649,6 +670,7 @@ def svm_model(x_train, y_train):
 def logistic_regression_model(x_train, y_train):
     print('Logistic Regression classifier')
     logistic_regression_clf = LogisticRegression(max_iter=1000, random_state=42)
+    # logistic_regression_clf = LogisticRegression(max_iter=1000, C=2 , penalty='l2', solver= 'liblinear', random_state=1)
     cv = kfold_validation(logistic_regression_clf, x_train, y_train)
     # param_grid = {'C': [0.001 ,0.01, 0.1, 0.5, 1, 5, 10, 15, 25, 100],
     #               'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
@@ -665,8 +687,8 @@ def logistic_regression_model(x_train, y_train):
 def rf_model(x_train, y_train):
     print('Random Forest classifier')
     rf_clf = RandomForestClassifier(random_state=42)  # basic model
-    rf_clf = RandomForestClassifier(n_estimators=600, criterion='gini', max_depth=8, max_features='sqrt',
-                                    min_samples_leaf=4, min_samples_split=2, random_state=1)  # chosen model
+    # rf_clf = RandomForestClassifier(n_estimators=600, criterion='gini', max_depth=8, max_features='sqrt',
+    #                                 min_samples_leaf=4, min_samples_split=2, random_state=1)  # chosen model
     cv = kfold_validation(rf_clf, x_train, y_train)
 
     # #-----Params-----#
@@ -702,12 +724,18 @@ def rf_model(x_train, y_train):
     param_tuning(rf_clf, x_train, y_train, param_grid, cv)
 
 
-if __name__ == '__main__':
-    pd.set_option('display.max_columns', None)
+# if __name__ == '__main__':
+#     pd.set_option('display.max_columns', None)
     # pre_process_main()
     # X_train, Y_train, X_test = read_and_split_data()
 
     # logistic_regression_model(X_train, Y_train)
     # svm_model(X_train, Y_train)
     # rf_model(X_train, Y_train)
-    train_best_model()
+    # train_best_model()
+    # best_model = load_best_model()
+    # predictions = predict(best_model, 'trump_test.tsv')
+    # with open('307887984_307830901.txt', 'w') as path:
+    #     path.write(predictions)
+    #     path.close()
+

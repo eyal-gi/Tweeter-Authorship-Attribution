@@ -12,6 +12,7 @@ from torchtext.legacy.data import Field, LabelField, BucketIterator, TabularData
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.metrics import confusion_matrix, classification_report
+import spacy
 import string
 import pickle
 from tabulate import tabulate
@@ -26,6 +27,7 @@ import re
 # nltk.download('wordnet')
 
 
+############ CHECK IF CAN DELETE !!! #######################
 # training_data = ex3.read_data('trump_train.tsv')
 # training_data = training_data[['tweet', 'label']]
 #
@@ -35,6 +37,8 @@ import re
 # fields = [('tweet', TEXT), ('label', LABEL)]
 #
 # train_data_, valid_data_ = training_data.split(split_ratio=0.7, random_state=1)
+############ CHECK IF CAN DELETE !!! #######################
+
 
 # check whether cuda is available
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -107,7 +111,7 @@ class LSTM(nn.Module):
         # ## Final activation function
         outputs = self.act(dense_outputs)
 
-        # -------------------------------------------------
+        # ------------------------------------------------- DELETE??????
         # embedded = self.embedding(text)
         # lstm_output, _ = self.lstm(embedded)
         # x = self.fc(lstm_output[:, -1, :])
@@ -137,8 +141,10 @@ class LSTM(nn.Module):
         for epoch in range(1, epochs + 1):
             # train the model
             train_loss, train_acc = self._train(train_iterator, optimizer, criterion)
+            print(f'epoch train acc: {train_acc}')
             # evaluate the model
             valid_loss, valid_acc = self._evaluate(val_iterator, criterion)
+            print(f'epoch val acc: {valid_acc}')
 
             history['accuracy'].append(train_acc)
             history['loss'].append(train_loss)
@@ -348,7 +354,7 @@ def kfold_tuning(X, y, lengths, params, embeddings):
     :param params: Dictionary of parameters.
     :return: Results data frame
     """
-    skf = StratifiedKFold(n_splits=5, random_state=1, shuffle=True)
+    skf = StratifiedKFold(n_splits=10, random_state=1, shuffle=True)
 
     # initialize results lists
     tuning_params = []
@@ -468,6 +474,7 @@ def preprocess_tweets_for_embedding(x_emb_train):
     Removing punctuation
     Removing stop words
     Removing stock-market symbols
+    Lemmatizating
 
     :param x_emb_train: DataFrame of the train data , contain the tweets
     :return: Dataframe with clean tweets.
@@ -545,37 +552,36 @@ def make_embedding(clean_data):
 
 
 ####### read and make data to preprocessing #######
-# TODO make everything for the test too!
 
-X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding()
+# X_embedding_train, Y_embedding_train, X_embedding_test = read_data_for_embedding()
+#
+# X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
+# ############### make embedding #################
+# embedding_vectors, vocab_size, x_data, data_lengths = make_embedding(X_emb_clean_train)
+#
+# params = {'BATCH_SIZE': [64],
+#           'VOCAB_SIZE': [vocab_size],
+#           'EMBEDDING_DIM': [100],
+#           'HIDDEN_NODES': [32],
+#           'OUTPUT_NODES': [1],
+#           'lAYERS_NUM': [2],
+#           'BIDIRECTIONAL': [True],
+#           'DROPOUT': [0.1],
+#           'LR': [0.001],
+#           'EPOCHS': [2]
+#           }
+#
+# best_params = {'BATCH_SIZE': [16],
+#                'VOCAB_SIZE': [vocab_size],
+#                'EMBEDDING_DIM': [100],
+#                'HIDDEN_NODES': [64],
+#                'OUTPUT_NODES': [1],
+#                'lAYERS_NUM': [2],
+#                'BIDIRECTIONAL': [True],
+#                'DROPOUT': [0.2],
+#                'LR': [0.01],
+#                'EPOCHS': [10]
+#                }
 
-X_emb_clean_train = preprocess_tweets_for_embedding(X_embedding_train)
-############### make embedding #################
-embedding_vectors, vocab_size, x_data, data_lengths = make_embedding(X_emb_clean_train)
-
-params = {'BATCH_SIZE': [64],
-          'VOCAB_SIZE': [vocab_size],
-          'EMBEDDING_DIM': [100],
-          'HIDDEN_NODES': [64, 128, 256],
-          'OUTPUT_NODES': [1],
-          'lAYERS_NUM': [2],
-          'BIDIRECTIONAL': [True],
-          'DROPOUT': [0.1, 0.2, 0.3],
-          'LR': [0.001, 0.01],
-          'EPOCHS': [2, 4, 8]
-          }
-
-best_params = {'BATCH_SIZE': [16],
-               'VOCAB_SIZE': [vocab_size],
-               'EMBEDDING_DIM': [100],
-               'HIDDEN_NODES': [64],
-               'OUTPUT_NODES': [1],
-               'lAYERS_NUM': [2],
-               'BIDIRECTIONAL': [True],
-               'DROPOUT': [0.2],
-               'LR': [0.01],
-               'EPOCHS': [10]
-               }
-
-lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=best_params,
-            embedding_vector=embedding_vectors)
+# lstm_tuning(train_lengths=data_lengths, x_train=x_data, y_train=Y_embedding_train, params_grid=best_params,
+#             embedding_vector=embedding_vectors)
