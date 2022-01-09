@@ -122,11 +122,11 @@ class LSTM(nn.Module):
         # architecture
         print(self)
 
-        # No. of trianable parameters
-        def count_parameters(model):
-            return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # No. of trianable parameters
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-        print(f'The model has {count_parameters(self):,} trainable parameters')
+    # print(f'The model has {count_parameters(self):,} trainable parameters')
 
     def fit(self, train_iterator, val_iterator, optimizer, criterion, epochs=8, verbose=0):
         """
