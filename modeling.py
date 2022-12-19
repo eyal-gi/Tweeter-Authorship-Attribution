@@ -735,7 +735,7 @@ def rf_model(x_train, y_train):
     # train_best_model()
     # best_model = load_best_model()
     # predictions = predict(best_model, 'trump_test.tsv')
-    # with open('307887984_307830901.txt', 'w') as path:
+    # with open('predictions.txt', 'w') as path:
     #     path.write(predictions)
     #     path.close()
 
