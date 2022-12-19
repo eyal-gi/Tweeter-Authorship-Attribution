@@ -1,4 +1,4 @@
-import modeling1 as ex3
+import modeling as ex3
 import nltk
 from nltk import TweetTokenizer, WordNetLemmatizer
 from nltk.corpus import stopwords
