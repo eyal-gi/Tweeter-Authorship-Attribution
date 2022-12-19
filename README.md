@@ -1,6 +1,6 @@
 # Tweeter-Authorship-Classification
 
-This project was done as part of an NLP class. The task is to calissy whether a tweet from the USA president's Tweeter account was written by the president or
+This project was done as part of an NLP class, during my Graduate studies in Data Science. The task was to classify whether a tweet from the USA president's Tweeter account was written by the president or
 by a staff member, during the term of Donald Trump.
 
 The raw data contains the tweet, the user, time stamp, and the device the tweet was sent from.
