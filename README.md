@@ -8,4 +8,4 @@ The raw data contains the tweet, the user, time stamp, and the device the tweet 
 Our optimal model achieved the **best results in class** on the given unlabled test set.
 
 More on the project can be seen on the project's report:
-[Authorship-Classification-Report.pdf](https://github.com/eyal-gi/Tweeter-Authorship-Classification/files/10259745/Authorship-Classification-Report.pdf)
+[Authorship-Classification-Report.pdf](https://github.com/eyal-gi/Tweeter-Authorship-Classification/blob/main/Authorship-Classification-Report.pdf)
